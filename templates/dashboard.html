@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Welcome, {{ user.full_name or user.email }}</h2>
+
+{% if pharmacies %}
+  <p>Select a pharmacy to register pickup:</p>
+  <ul>
+    {% for ph in pharmacies %}
+      <li><a href="/pickup/{{ ph.id }}">{{ ph.name }} ({{ ph.address or "no address" }})</a></li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No pharmacies assigned to you.</p>
+{% endif %}
+{% endblock %}

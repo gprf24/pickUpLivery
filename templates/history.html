@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Pickup History</h2>
+
+{% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Pharmacy</th>
+        <th>Status</th>
+        <th>Photo</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pickup, ph in rows %}
+        <tr>
+          <td>{{ pickup.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td>{{ ph.name }}</td>
+          <td>{{ pickup.status }}</td>
+          <td>
+            {% if pickup.image_path %}
+              <a href="/uploads/{{ pickup.image_path }}" target="_blank">View</a>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            {% if pickup.latitude and pickup.longitude %}
+              {{ "%.5f"|format(pickup.latitude) }}, {{ "%.5f"|format(pickup.longitude) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No pickups yet.</p>
+{% endif %}
+{% endblock %}
