@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}Admin (Glass) · PickUp Livery{% endblock %}
+
+{% block content %}
+<section class="admin-glass">
+
+   <!--======= HERO ======= -->
+  <header class="admin-hero card">
+    <h1 class="g-title">Admin panel</h1>
+    <p class="g-lead">
+      Quick stats, user/region/pharmacy management — redesigned with glass sections & expanders.
+    </p>
+    <!--<div class="g-actions">
+      <a href="/admin/db-check" target="_blank" class="btn btn-secondary">DB Check</a>
+      <a href="/admin/dedup-preview" target="_blank" class="btn btn-secondary">Dup&nbsp;Preview</a>
+    </div>-->
+  </header>
+
+  <!-- ======= STATISTICS ======= -->
+  <details class="g-section" open>
+    <summary><h2>📊 Statistics</h2></summary>
+    <ul class="g-badges">
+      <li class="badge">Users: {{ stats.counts.PP_user or 0 }}</li>
+      <li class="badge">Regions: {{ stats.counts.PP_region or 0 }}</li>
+      <li class="badge">Pharmacies: {{ stats.counts.PP_pharmacy or 0 }}</li>
+      <li class="badge">Pickups: {{ stats.counts.PP_pickup or 0 }}</li>
+      <li class="badge">Links: {{ stats.counts.PP_user_pharmacy_link or 0 }}</li>
+    </ul>
+  </details>
+
+  <!-- ======= USERS ======= -->
+  <details class="g-section" >
+    <summary><h2>👤 Users</h2></summary>
+
+    <!-- Create user -->
+    <div class="g-card">
+      <h3 class="g-subtitle">Create user</h3>
+      <form action="/admin/users/create" method="post" class="form-grid">
+        <label class="form-label">Login
+          <input type="text" name="login" required class="form-input">
+        </label>
+        <label class="form-label">Password
+          <input type="password" name="password" required minlength="6" class="form-input">
+        </label>
+        <label class="form-label">Role
+          <select name="role" class="form-input">
+            <option value="driver" selected>driver</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- User list -->
+    <div class="g-card">
+      <h3 class="g-subtitle">Existing users</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Login</th><th>Role</th><th>Active</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>{{ u.login }}</td>
+              <td>{{ u.role }}</td>
+              <td>{{ 'yes' if u.is_active else 'no' }}</td>
+              <td>
+                <div class="form-actions">
+                  <form action="/admin/users/{{ u.id }}/toggle" method="post">
+                    <button type="submit" class="btn btn-secondary">
+                      {{ 'Deactivate' if u.is_active else 'Activate' }}
+                    </button>
+                  </form>
+                  <form action="/admin/users/{{ u.id }}/password" method="post"
+                        class="form-grid" style="grid-template-columns:1fr auto;gap:.5rem">
+                    <input type="password" name="new_password"
+                           placeholder="new password" minlength="6" required class="form-input">
+                    <button type="submit" class="btn btn-primary">Set</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <!-- ======= REGIONS ======= -->
+  <details class="g-section">
+    <summary><h2>🗺️ Regions</h2></summary>
+    <div class="g-card">
+      <h3 class="g-subtitle">Create region</h3>
+      <form action="/admin/regions/create" method="post" class="form-grid">
+        <label class="form-label">Name
+          <input type="text" name="name" required class="form-input">
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="g-card">
+      <h3 class="g-subtitle">All regions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Active</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for r in regions %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ 'yes' if r.is_active else 'no' }}</td>
+              <td>
+                <form action="/admin/regions/{{ r.id }}/toggle" method="post" class="form-actions">
+                  <button type="submit" class="btn btn-secondary">
+                    {{ 'Deactivate' if r.is_active else 'Activate' }}
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <!-- ======= PHARMACIES ======= -->
+  <details class="g-section">
+    <summary><h2>🏥 Pharmacies</h2></summary>
+
+    <div class="g-card">
+      <h3 class="g-subtitle">Create pharmacy</h3>
+      <form action="/admin/pharmacies/create" method="post" class="form-grid">
+        <label class="form-label">Name
+          <input type="text" name="name" required class="form-input">
+        </label>
+        <label class="form-label">Region
+          <select name="region_id" required class="form-input">
+            {% for r in regions %}
+              <option value="{{ r.id }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-label">Address
+          <input type="text" name="address" placeholder="optional" class="form-input">
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="g-card">
+      <h3 class="g-subtitle">All pharmacies</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Region</th><th>Active</th><th>Assigned users</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for p in pharmacies %}
+            <tr>
+              <td>{{ p.id }}</td>
+              <td>{{ p.name }}</td>
+              <td>{{ region_by_id.get(p.region_id).name if region_by_id.get(p.region_id) else '-' }}</td>
+              <td>{{ 'yes' if p.is_active else 'no' }}</td>
+              <td>
+                <ul class="g-ul">
+                  {% for uid in assignments.get(p.id, []) %}
+                    {% set usr = user_by_id.get(uid) %}
+                    {% if usr %}
+                      <li class="g-li">
+                        <span>{{ usr.login }}</span>
+                        <form action="/admin/pharmacies/{{ p.id }}/unassign" method="post">
+                          <input type="hidden" name="user_id" value="{{ usr.id }}">
+                          <button type="submit" class="btn btn-secondary" title="Unassign">×</button>
+                        </form>
+                      </li>
+                    {% endif %}
+                  {% endfor %}
+                </ul>
+
+                <form action="/admin/pharmacies/{{ p.id }}/assign" method="post" class="form-grid g-assign">
+                  <select name="user_id" required class="form-input">
+                    {% for u in users %}
+                      <option value="{{ u.id }}">{{ u.login }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-primary">Assign</button>
+                </form>
+              </td>
+              <td>
+                <form action="/admin/pharmacies/{{ p.id }}/toggle" method="post" class="form-actions">
+                  <button type="submit" class="btn btn-secondary">
+                    {{ 'Deactivate' if p.is_active else 'Activate' }}
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+</section>
+
+<style>
+  /* Glass + Accordion Admin */
+  .admin-glass { display:flex; flex-direction:column; gap:1.25rem; }
+  .admin-hero {
+    text-align:center; background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12); border-radius:18px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4); padding:2rem 1.5rem;
+  }
+  .g-title {
+    font-size:2rem;
+    background:linear-gradient(90deg,var(--brand),var(--brand-2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    margin:0 0 .5rem;
+  }
+  .g-lead{color:var(--muted);margin:0 0 1rem;}
+  .g-actions{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;}
+  details.g-section {
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:14px; overflow:hidden;
+    transition:all .3s ease;
+  }
+  details.g-section[open] {
+    box-shadow:0 10px 40px rgba(0,0,0,0.35);
+  }
+  details.g-section summary {
+    cursor:pointer; list-style:none;
+    padding:1rem 1.25rem;
+    font-weight:700; color:var(--text);
+    background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,0));
+    border-bottom:1px solid rgba(255,255,255,.08);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  details.g-section summary::-webkit-details-marker {display:none;}
+  details.g-section h2 {
+    margin:0; font-size:1.25rem;
+    background:linear-gradient(90deg,var(--brand),var(--brand-2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .g-card {
+    padding:1rem 1.25rem;
+  }
+  .g-subtitle {margin:0 0 .75rem;font-size:1.1rem;}
+  .g-badges {display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;margin:0;padding:1rem 1.25rem;}
+  .g-ul{margin:0;padding-left:1rem;}
+  .g-li{display:flex;align-items:center;gap:.5rem;margin:.25rem 0;}
+  .g-assign{grid-template-columns:1fr auto;gap:.5rem;margin-top:.5rem;}
+</style>
+{% endblock %}

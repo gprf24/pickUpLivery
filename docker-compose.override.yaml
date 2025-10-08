@@ -1,0 +1,17 @@
+services:
+  web:
+    volumes:
+      - .:/app
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 80
+      --reload
+      --reload-dir /app/app
+      --reload-include *.py
+      --reload-include *.html
+      --reload-include *.css
+      --reload-include *.js
+    environment:
+      - DEBUG=1                     # см. app.main: debug=os.getenv("DEBUG")=="1"
+      - WATCHFILES_FORCE_POLLING=1  # важно для Docker Desktop на Windows

@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}History · PickUp Livery{% endblock %}
+{% block content %}
+
+<section class="page-hero card">
+  <h2 class="page-title">Pickup History</h2>
+  <p class="lead">Filter by date, region, pharmacy or driver. Grouped by day with collapsible sections.</p>
+</section>
+
+{% if user.role == "admin" %}
+  <details class="filters card">
+    <summary>Filters</summary>
+    <form method="get" action="/history" class="form-grid grid cols-3">
+      <label class="form-label">Date from
+        <input type="date" name="date_from" value="{{ active_filters.date_from }}" class="form-input">
+      </label>
+
+      <label class="form-label">Date to
+        <input type="date" name="date_to" value="{{ active_filters.date_to }}" class="form-input">
+      </label>
+
+      <label class="form-label">Region
+        <select name="region_id" class="form-input">
+          <option value="">—</option>
+          {% for r in regions %}
+            <option value="{{ r.id }}" {% if active_filters.region_id and r.id == active_filters.region_id|int %}selected{% endif %}>{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-label">Pharmacy
+        <select name="pharmacy_id" class="form-input">
+          <option value="">—</option>
+          {% for p in pharmacies %}
+            <option value="{{ p.id }}" {% if active_filters.pharmacy_id and p.id == active_filters.pharmacy_id|int %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-label">Driver
+        <select name="driver_id" class="form-input">
+          <option value="">—</option>
+          {% for u in users %}
+            <option value="{{ u.id }}" {% if active_filters.driver_id and u.id == active_filters.driver_id|int %}selected{% endif %}>
+              {{ u.full_name or u.login }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="/history" role="button" class="btn btn-secondary">Reset</a>
+      </div>
+    </form>
+  </details>
+{% endif %}
+
+{% if warnings and warnings|length %}
+  <div class="alert alert-warn">
+    <ul style="margin:0; padding-left: 1.2rem;">
+      {% for w in warnings %}
+        <li>{{ w }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if groups and groups|length %}
+  <section class="card" style="padding: .75rem 1rem;">
+    <div class="h-legend muted" style="margin-bottom:.5rem">Click a date to expand</div>
+
+    <div class="history-groups stack">
+      {% for g in groups %}
+        {% set items = g["items"] %}
+        {% set count = items|length %}
+        <details class="h-group">
+          <summary>
+            <div class="h-summary">
+              <strong class="h-date">{{ g.day.strftime('%Y-%m-%d') }}</strong>
+              <span class="h-count badge">{{ count }} {{ 'item' if count == 1 else 'items' }}</span>
+            </div>
+          </summary>
+
+          <div class="table-wrap" style="margin-top:.5rem">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date (local)</th>
+                  {% if user.role == "admin" %}<th>Driver</th>{% endif %}
+                  <th>Pharmacy</th>
+                  <th>Status</th>
+                  <th>Photos</th>
+                  <th>Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for pickup, ph, u in items %}
+                  {% set idxs = (photo_idxs.get(pickup.id) or []) %}
+                  {% set photo_qty = idxs|length %}
+                  <tr>
+                    <td>
+                      <time class="utc-to-local"
+                            datetime="{{ pickup.created_at.strftime('%Y-%m-%dT%H:%M:%S') }}Z"
+                            title="UTC: {{ pickup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}Z">
+                        {{ pickup.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                      </time>
+                    </td>
+
+                    {% if user.role == "admin" %}
+                      <td>{{ (u.full_name or u.login) if u else "-" }}</td>
+                    {% endif %}
+
+                    <td>{{ ph.name if ph else "-" }}</td>
+
+                    <td>
+                      {% if pickup.status in ["ok","success","done"] %}
+                        <span class="badge ok">OK</span>
+                      {% else %}
+                        <span class="badge">{{ pickup.status }}</span>
+                      {% endif %}
+                    </td>
+
+                    <td class="photos-cell">
+                      {% if photo_qty > 0 %}
+                        <div class="photo-count">{{ photo_qty }} {{ "photo" if photo_qty == 1 else "photos" }}</div>
+                        <div class="thumbs">
+                          {# IMPORTANT: use actual idxs to avoid 404 (non-sequential slots) #}
+                          {% for i in idxs[:4] %}
+                            <a href="/pickup/{{ pickup.id }}/photos/{{ i }}" target="_blank" rel="noopener">
+                              <img src="/pickup/{{ pickup.id }}/photos/{{ i }}" alt="photo {{ i }}" loading="lazy">
+                            </a>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      {% if pickup.latitude and pickup.longitude %}
+                        {{ "%.5f"|format(pickup.latitude) }}, {{ "%.5f"|format(pickup.longitude) }}
+                        &nbsp;·&nbsp;
+                        <a href="https://www.google.com/maps/search/?api=1&query={{ pickup.latitude }},{{ pickup.longitude }}"
+                           target="_blank" rel="noopener">Open map</a>
+                      {% else %}—{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  </section>
+{% else %}
+  <div class="alert alert-warn">No pickups found.</div>
+{% endif %}
+
+<style>
+  .stack > * + * { margin-top: .75rem; }
+  .h-group {
+    background: rgba(255,255,255,.02);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .h-group summary {
+    cursor: pointer;
+    list-style: none;
+    padding: .75rem 1rem;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,0));
+  }
+  .h-group summary::-webkit-details-marker { display: none; }
+  .h-summary { display: flex; align-items: center; gap: .6rem; }
+  .h-date { letter-spacing: .2px; }
+  .h-count { font-weight: 600; }
+  .photos-cell .photo-count{margin-bottom:6px;opacity:.9}
+  .photos-cell .thumbs{display:flex;gap:6px;flex-wrap:wrap}
+  .photos-cell .thumbs img{width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // UTC → local time conversion
+  (function(){
+    const nodes = document.querySelectorAll('time.utc-to-local');
+    for (const t of nodes){
+      const isoUtc = t.getAttribute('datetime');
+      if (!isoUtc) continue;
+      const d = new Date(isoUtc); // 'Z' => UTC
+      if (isNaN(d.getTime())) continue;
+      const opts = { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' };
+      t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
+    }
+  })();
+</script>
+{% endblock %}

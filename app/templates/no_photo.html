@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}No Photo · PickUp Livery{% endblock %}
+{% block content %}
+
+<section class="card center" style="min-height:50vh">
+  <div style="text-align:center">
+    <h2 class="gradient-text" style="margin-bottom:.25rem">No Photo Available</h2>
+    <p class="lead">This pickup (ID {{ pickup_id }}) has no photo attached in the database.</p>
+    <p style="margin-top: 1rem">
+      <a href="/history" class="btn btn-primary">← Back to history</a>
+    </p>
+  </div>
+</section>
+
+{% endblock %}

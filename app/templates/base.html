@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>
+      {% block title %}
+        PickUp Livery
+      {% endblock %}
+    </title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <!-- grid wrapper for sticky footer -->
+
+      <header class="site-header">
+        <div class="container header-inner">
+          <a class="brand" href="/"><span class="gradient-text">PickUp Livery</span> </a>
+          <nav class="nav">
+            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Tasks</a>
+            <a href="/history" class="{% if request.url.path.startswith('/history') %}active{% endif %}">History</a>
+
+            {% if user and user.role == 'admin' %}
+              <a href="/admin" class="{% if request.url.path.startswith('/admin') %}active{% endif %}">Admin</a>
+            {% endif %}
+
+            {% if user %}
+              <span class="nav-user">♥ {{ user.full_name or user.login }}</span>
+              <a class="btn btn-secondary" href="/logout">Logout</a>
+            {% else %}
+              <a class="btn btn-primary" href="/login">Login</a>
+            {% endif %}
+          </nav>
+        </div>
+      </header>
+
+      <main class="container site-main">
+        {% block content %}
+        {% endblock %}
+      </main>
+
+      <footer class="site-footer">
+        <div class="container">
+          <small>© <span id="year"></span> PickUp Livery</small>
+        </div>
+      </footer>
+    </div>
+    <!-- /.page -->
+
+    {% block scripts %}
+    {% endblock %}
+    <script>
+      ;(function () {
+        var y = document.getElementById('year')
+        if (y) y.textContent = new Date().getFullYear()
+      })()
+    </script>
+  </body>
+</html>

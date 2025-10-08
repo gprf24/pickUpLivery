@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}404 Not Found{% endblock %}
+{% block content %}
+
+<section class="page-hero card center">
+  <div>
+    <h1 class="gradient-text">404</h1>
+    <p class="lead">Sorry, the page <code>{{ path }}</code> could not be found.</p>
+    <p style="margin-top:.75rem">
+      <a href="/" class="btn btn-primary">← Back to Home</a>
+    </p>
+  </div>
+</section>
+
+{% endblock %}

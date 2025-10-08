@@ -1,0 +1,269 @@
+{# templates/pickup.html #}
+{% extends "base.html" %}
+{% block title %}Pickup — {{ pharmacy.name if pharmacy else 'Unknown Pharmacy' }}{% endblock %}
+
+{% block content %}
+<section class="page-hero card">
+  <h2 class="page-title">Pickup at {{ pharmacy.name }}</h2>
+  <p class="lead">Take photos one-by-one into four slots. At least one photo is required.</p>
+</section>
+
+<section class="card">
+  {% if message %}
+    <div class="alert alert-ok success-msg" role="status">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="alert alert-error error-msg" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form id="pickupForm" class="form-grid" action="/pickup/{{ pharmacy.id }}" method="post" enctype="multipart/form-data">
+    <!-- Coordinates -->
+    <div class="grid cols-2">
+      <label class="form-label">
+        Latitude
+        <input type="text" name="lat" id="lat" class="form-input" placeholder="e.g. 53.55">
+      </label>
+      <label class="form-label">
+        Longitude
+        <input type="text" name="lon" id="lon" class="form-input" placeholder="e.g. 9.99">
+      </label>
+    </div>
+
+    <!-- Locate button capture="environment"-->
+    <div class="form-actions">
+      <button type="button" class="btn btn-ghost" id="btnLocate">
+        <span class="spinner" id="locSpinner" hidden></span>
+        Use current location
+      </button>
+      <small id="locStatus" class="muted" aria-live="polite"></small>
+    </div>
+
+    <!-- Four distinct photo slots -->
+    <div class="photo-slots">
+      <!-- Slot 1 -->
+      <div class="slot">
+        <label class="form-label">
+          Photo slot 1
+          <input
+            type="file"
+            name="image1"
+            id="image1"
+            accept="image/*"
+           
+            class="form-input"
+          >
+          <small class="muted">Take or choose one photo.</small>
+        </label>
+        <div class="slot-preview" id="preview1" aria-live="polite"></div>
+      </div>
+
+      <!-- Slot 2 -->
+      <div class="slot">
+        <label class="form-label">
+          Photo slot 2
+          <input
+            type="file"
+            name="image2"
+            id="image2"
+            accept="image/*"
+
+            class="form-input"
+          >
+          <small class="muted">Optional.</small>
+        </label>
+        <div class="slot-preview" id="preview2" aria-live="polite"></div>
+      </div>
+
+      <!-- Slot 3 -->
+      <div class="slot">
+        <label class="form-label">
+          Photo slot 3
+          <input
+            type="file"
+            name="image3"
+            id="image3"
+            accept="image/*"
+
+            class="form-input"
+          >
+          <small class="muted">Optional.</small>
+        </label>
+        <div class="slot-preview" id="preview3" aria-live="polite"></div>
+      </div>
+
+      <!-- Slot 4 -->
+      <div class="slot">
+        <label class="form-label">
+          Photo slot 4
+          <input
+            type="file"
+            name="image4"
+            id="image4"
+            accept="image/*"
+
+            class="form-input"
+          >
+          <small class="muted">Optional.</small>
+        </label>
+        <div class="slot-preview" id="preview4" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Submit pickup</button>
+      
+    </div>
+  </form>
+</section>
+
+<style>
+  /* page-specific small styles */
+  .photo-slots {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 12px;
+    margin: 10px 0 6px 0;
+  }
+  .slot { border: 1px solid var(--border, rgba(255,255,255,0.12)); border-radius: 10px; padding: 10px; }
+  .slot-preview {
+    margin-top: 8px;
+    min-height: 80px;
+    display: grid;
+    place-items: center;
+    background: var(--glass, rgba(255,255,255,0.05));
+    border-radius: 10px;
+    border: 1px dashed var(--border, rgba(255,255,255,0.12));
+  }
+  .slot-preview img {
+    display: block;
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: spin .8s linear infinite;
+    vertical-align: -2px;
+  }
+  .spinner[hidden]{ display: none !important; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 900px) {
+    .photo-slots { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .photo-slots { grid-template-columns: 1fr; }
+  }
+
+  /* Avoid unwanted global aria-busy spinners */
+  .btn[aria-busy]::before,
+  .btn.btn-ghost[aria-busy]::before,
+  .btn.is-loading::before {
+    content: none !important;
+    animation: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ---------- per-slot preview ----------
+  function bindPreview(inputId, previewId) {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    if (!input || !preview) return;
+
+    input.addEventListener('change', () => {
+      preview.innerHTML = '';
+      const f = input.files && input.files[0];
+      if (!f) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.createElement('img');
+        img.src = e.target.result;
+        img.alt = f.name || inputId;
+        preview.appendChild(img);
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+
+  bindPreview('image1', 'preview1');
+  bindPreview('image2', 'preview2');
+  bindPreview('image3', 'preview3');
+  bindPreview('image4', 'preview4');
+
+  // ---------- require at least one photo before submit ----------
+  const form = document.getElementById('pickupForm');
+  form?.addEventListener('submit', (e) => {
+    const i1 = document.getElementById('image1');
+    const i2 = document.getElementById('image2');
+    const i3 = document.getElementById('image3');
+    const i4 = document.getElementById('image4');
+
+    const hasAny =
+      (i1?.files?.length || 0) +
+      (i2?.files?.length || 0) +
+      (i3?.files?.length || 0) +
+      (i4?.files?.length || 0) > 0;
+
+    if (!hasAny) {
+      e.preventDefault();
+      alert('Please attach at least one photo (any slot).');
+      return false;
+    }
+  });
+
+  // ---------- Geolocation ----------
+  const btnLocate   = document.getElementById('btnLocate');
+  const locSpinner  = document.getElementById('locSpinner');
+  const locStatus   = document.getElementById('locStatus');
+  const latInput    = document.getElementById('lat');
+  const lonInput    = document.getElementById('lon');
+
+  function setLocStatus(msg){ if (locStatus) locStatus.textContent = msg || ''; }
+  function setLoading(loading){
+    if (locSpinner) locSpinner.hidden = !loading;
+    if (btnLocate){
+      btnLocate.disabled = loading;
+      btnLocate.classList.toggle('is-loading', loading);
+      if (loading) btnLocate.setAttribute('aria-busy','true'); else btnLocate.removeAttribute('aria-busy');
+    }
+  }
+  const fmt = n => (typeof n === 'number' && isFinite(n)) ? n.toFixed(6) : '';
+
+  function getPosition(options){
+    return new Promise((resolve, reject) => {
+      if (!('geolocation' in navigator)) { reject(new Error('Geolocation is not supported by this browser.')); return; }
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+
+  btnLocate?.addEventListener('click', async () => {
+    setLoading(true); setLocStatus('Locating…');
+    try{
+      const pos = await getPosition({ enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+      const { latitude, longitude, accuracy } = pos.coords;
+      latInput.value = fmt(latitude); lonInput.value = fmt(longitude);
+      setLocStatus(`Location set (±${Math.round(accuracy)} m).`);
+    }catch(err){
+      let msg = 'Failed to get location.';
+      if (err && typeof err.code === 'number'){
+        if (err.code === 1) msg = 'Permission denied. Please allow location access.';
+        else if (err.code === 2) msg = 'Position unavailable.';
+        else if (err.code === 3) msg = 'Timed out while retrieving location.';
+      } else if (err && err.message){ msg = err.message; }
+      setLocStatus(msg);
+    }finally{
+      setLoading(false);
+    }
+  });
+</script>
+{% endblock %}
