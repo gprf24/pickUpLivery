@@ -21,17 +21,82 @@
         action="/pickup/{{ pharmacy.public_id }}"
         method="post"
         enctype="multipart/form-data">
-    <!-- Coordinates -->
-    <div class="grid cols-2">
-      <label class="form-label">
-        Latitude
-        <input type="text" name="lat" id="lat" class="form-input" placeholder="e.g. 53.55">
-      </label>
-      <label class="form-label">
-        Longitude
-        <input type="text" name="lon" id="lon" class="form-input" placeholder="e.g. 9.99">
-      </label>
-    </div>
+
+    {% set is_admin = (user.role == "admin") %}
+
+    {# ------------------ Coordinates block ------------------ #}
+    {% if is_admin %}
+      {# ADMIN: can type coordinates manually #}
+      <div class="grid cols-2">
+        <label class="form-label">
+          Latitude
+          <input
+            type="text"
+            name="lat"
+            id="lat"
+            class="form-input"
+            placeholder="e.g. 53.55"
+            {% if require_location %}required{% endif %}
+          >
+        </label>
+        <label class="form-label">
+          Longitude
+          <input
+            type="text"
+            name="lon"
+            id="lon"
+            class="form-input"
+            placeholder="e.g. 9.99"
+            {% if require_location %}required{% endif %}
+          >
+        </label>
+      </div>
+
+      <small class="muted" style="display:block; margin-top:.3rem; margin-bottom:.3rem;">
+        {% if require_location %}
+          Location is <strong>required</strong> for this pickup.
+          You can enter it manually or use the button below.
+        {% else %}
+          Location is optional but recommended to improve traceability.
+        {% endif %}
+      </small>
+    {% else %}
+      {# DRIVER: cannot type coordinates manually; only via geolocation button #}
+      <div class="grid cols-2">
+        <label class="form-label">
+          Latitude
+          <input
+            type="text"
+            id="lat_display"
+            class="form-input"
+            placeholder="Press the button below"
+            readonly
+          >
+        </label>
+        <label class="form-label">
+          Longitude
+          <input
+            type="text"
+            id="lon_display"
+            class="form-input"
+            placeholder="Press the button below"
+            readonly
+          >
+        </label>
+      </div>
+
+      {# real hidden fields that are submitted to the backend #}
+      <input type="hidden" name="lat" id="lat">
+      <input type="hidden" name="lon" id="lon">
+
+      <small class="muted" style="display:block; margin-top:.3rem; margin-bottom:.3rem;">
+        {% if require_location %}
+          Location is <strong>required</strong> for this pickup. Please use the button below to fill it automatically.
+        {% else %}
+          Location is optional but recommended to improve traceability.
+        {% endif %}
+      </small>
+    {% endif %}
 
     <!-- Locate button -->
     <div class="form-actions">
@@ -174,6 +239,10 @@
 
 {% block scripts %}
 <script>
+  // pass backend flag + role flag into JS
+  const REQUIRE_LOCATION = {{ 'true' if require_location else 'false' }};
+  const IS_ADMIN = {{ 'true' if user.role == "admin" else 'false' }};
+
   // ---------- per-slot preview ----------
   function bindPreview(inputId, previewId) {
     const input = document.getElementById(inputId);
@@ -201,7 +270,7 @@
   bindPreview('image3', 'preview3');
   bindPreview('image4', 'preview4');
 
-  // ---------- require at least one photo before submit ----------
+  // ---------- require at least one photo (and location if enabled) ----------
   const form = document.getElementById('pickupForm');
   form?.addEventListener('submit', (e) => {
     const i1 = document.getElementById('image1');
@@ -220,14 +289,32 @@
       alert('Please attach at least one photo (any slot).');
       return false;
     }
+
+    if (REQUIRE_LOCATION) {
+      const latField = document.getElementById('lat');  // for admin it's visible, for driver it's hidden
+      const lonField = document.getElementById('lon');
+      const lat = latField?.value.trim();
+      const lon = lonField?.value.trim();
+
+      if (!lat || !lon) {
+        e.preventDefault();
+        const msg = IS_ADMIN
+          ? 'Location is required. Please provide latitude and longitude (or use "Use current location").'
+          : 'Location is required. Please use "Use current location".';
+        alert(msg);
+        return false;
+      }
+    }
   });
 
   // ---------- Geolocation ----------
   const btnLocate   = document.getElementById('btnLocate');
   const locSpinner  = document.getElementById('locSpinner');
   const locStatus   = document.getElementById('locStatus');
-  const latInput    = document.getElementById('lat');
-  const lonInput    = document.getElementById('lon');
+  const latField    = document.getElementById('lat');          // admin: visible, driver: hidden
+  const lonField    = document.getElementById('lon');          // admin: visible, driver: hidden
+  const latDisplay  = document.getElementById('lat_display');  // only exists for drivers
+  const lonDisplay  = document.getElementById('lon_display');  // only exists for drivers
 
   function setLocStatus(msg){ if (locStatus) locStatus.textContent = msg || ''; }
   function setLoading(loading){
@@ -252,7 +339,14 @@
     try{
       const pos = await getPosition({ enableHighAccuracy:true, timeout:10000, maximumAge:0 });
       const { latitude, longitude, accuracy } = pos.coords;
-      latInput.value = fmt(latitude); lonInput.value = fmt(longitude);
+      const latStr = fmt(latitude);
+      const lonStr = fmt(longitude);
+
+      if (latField)   latField.value   = latStr;
+      if (lonField)   lonField.value   = lonStr;
+      if (latDisplay) latDisplay.value = latStr;
+      if (lonDisplay) lonDisplay.value = lonStr;
+
       setLocStatus(`Location set (±${Math.round(accuracy)} m).`);
     }catch(err){
       let msg = 'Failed to get location.';

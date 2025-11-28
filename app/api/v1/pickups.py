@@ -39,6 +39,25 @@ def _parse_float_or_none(s: Optional[str]) -> Optional[float]:
         return None
 
 
+def _is_true_flag(value: Optional[str]) -> bool:
+    """
+    Helper to interpret env flags like 1/true/yes/on as True.
+    Everything else is False.
+    """
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _require_location() -> bool:
+    """
+    Read REQUIRE_PICKUP_LOCATION from environment.
+
+    If True, pickups MUST include latitude & longitude.
+    """
+    return _is_true_flag(os.getenv("REQUIRE_PICKUP_LOCATION", "0"))
+
+
 def _ensure_user_can_access_pharmacy(
     session: Session,
     user: User,
@@ -102,6 +121,9 @@ def _get_daily_pickup_limit() -> int:
     return value
 
 
+# ---------------------------------------------------------------------
+# GET: pickup form
+# ---------------------------------------------------------------------
 @router.get("/pickup/{pharmacy_pid}", response_class=HTMLResponse)
 def pickup_form(
     request: Request,
@@ -130,10 +152,20 @@ def pickup_form(
 
     return templates.TemplateResponse(
         "pickup.html",
-        {"request": request, "pharmacy": pharmacy, "user": user, "error": None},
+        {
+            "request": request,
+            "pharmacy": pharmacy,
+            "user": user,
+            "error": None,
+            # expose flag to template so we can show UX hint
+            "require_location": _require_location(),
+        },
     )
 
 
+# ---------------------------------------------------------------------
+# POST: create pickup
+# ---------------------------------------------------------------------
 @router.post("/pickup/{pharmacy_pid}", response_class=HTMLResponse)
 async def create_pickup(
     request: Request,
@@ -154,6 +186,7 @@ async def create_pickup(
     - At least one valid (non-empty) photo is required.
     - Access to the pharmacy is enforced (admin or user-pharmacy link).
     - A daily pickup limit per (driver, pharmacy) is enforced to mitigate abuse.
+    - If REQUIRE_PICKUP_LOCATION is enabled, latitude & longitude are required.
     """
     # Collect only files that actually have content (filename not empty)
     provided: List[tuple[int, UploadFile]] = []
@@ -166,6 +199,15 @@ async def create_pickup(
 
     latitude = _parse_float_or_none(lat)
     longitude = _parse_float_or_none(lon)
+
+    # Enforce location requirement if flag is enabled
+    if _require_location() and (latitude is None or longitude is None):
+        # Можно вместо HTTPException перерендерить pickup.html с error,
+        # но у тебя глобальный error.html уже настроен под 422, так что пока так.
+        raise HTTPException(
+            status_code=422,
+            detail="Location (latitude and longitude) is required for this pickup.",
+        )
 
     # Resolve pharmacy by public_id
     pharmacy = session.exec(
@@ -265,10 +307,14 @@ async def create_pickup(
                 f"Pickup saved with {saved_count} photo(s). "
                 f"Used {existing_count + 1}/{limit} pickups for today for this pharmacy & driver."
             ),
+            "require_location": _require_location(),
         },
     )
 
 
+# ---------------------------------------------------------------------
+# GET: photo by public_id
+# ---------------------------------------------------------------------
 @router.get("/photos/{photo_id}")
 def get_pickup_photo(
     photo_id: str,
