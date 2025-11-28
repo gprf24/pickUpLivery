@@ -211,6 +211,9 @@ def history_page(
     - Rows grouped by day for visual separators.
     - Photos: we now use per-pickup lists of photo public_ids (secure URLs)
       instead of predictable /pickup/{pickup_id}/photos/{idx} paths.
+    - Access control:
+        * Admins see all pickups (with filters).
+        * Non-admins see only their own pickups (Pickup.user_id == current user).
     """
 
     # 1) Parse filters from raw query strings
@@ -219,6 +222,12 @@ def history_page(
     did = _parse_int(driver_id)
     dfrom = _parse_date(date_from)
     dto = _parse_date(date_to)
+
+    # Non-admin users are not allowed to query arbitrary driver_id
+    # They always see only their own pickups.
+    is_admin = getattr(user, "role", None) == "admin"
+    if not is_admin:
+        did = None  # ignore driver_id query param for non-admins
 
     # If user accidentally swapped dates, normalize them (from <= to)
     if dfrom and dto and dfrom > dto:
@@ -295,12 +304,18 @@ def history_page(
         .order_by(Pickup.created_at.desc())
     )
 
+    # 🔐 Access control on data level
+    if not is_admin:
+        # Non-admins always see only their own pickups, regardless of query params
+        stmt = stmt.where(Pickup.user_id == user.id)
+
     # 4) Apply filters if they were parsed successfully
     if rid:
         stmt = stmt.where(Region.id == rid)
     if pid:
         stmt = stmt.where(Pharmacy.id == pid)
-    if did:
+    # driver_id filter only makes sense for admins; for non-admins did is always None
+    if did and is_admin:
         stmt = stmt.where(User.id == did)
     if dfrom:
         stmt = stmt.where(Pickup.created_at >= _as_start_dt(dfrom))
@@ -346,7 +361,7 @@ def history_page(
             last_day_key = day_key
         groups[-1]["items"].append((pickup, ph, u))
 
-    # 8) Dropdown datasets for filters
+    # 8) Dropdown datasets for filters (only really used by admin via template)
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
     users = session.exec(sm_select(User).order_by(User.login)).all()
@@ -366,7 +381,8 @@ def history_page(
             "active_filters": {
                 "region_id": region_id or "",
                 "pharmacy_id": pharmacy_id or "",
-                "driver_id": driver_id or "",
+                # driver filter используется только в UI админа
+                "driver_id": driver_id if is_admin else "",
                 "date_from": date_from or "",
                 "date_to": date_to or "",
             },

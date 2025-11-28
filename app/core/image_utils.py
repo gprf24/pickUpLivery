@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Tuple
 
 from fastapi import UploadFile
-from PIL import Image
+from PIL import Image, ImageOps  # <-- добавили ImageOps
 
 
 def compress_image(
@@ -20,6 +20,7 @@ def compress_image(
     - Works for any common input format (JPEG/PNG/HEIC/WebP, etc.) as long as Pillow supports it.
     - Resizes so that the longest side <= max_size_px.
     - Re-encodes as JPEG with given quality.
+    - Applies EXIF orientation (so photos from phones are not rotated incorrectly).
     """
 
     # Move cursor to start (in case somebody already read from the file)
@@ -27,6 +28,13 @@ def compress_image(
 
     # Open with Pillow (it will handle different formats)
     img = Image.open(file.file)
+
+    # 🔧 Fix orientation according to EXIF (common for phone photos)
+    try:
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        # If EXIF is missing or broken, just ignore and continue
+        pass
 
     # Convert to RGB (drops alpha channel if present)
     if img.mode not in ("RGB", "L"):
