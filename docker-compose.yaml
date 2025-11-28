@@ -5,4 +5,4 @@ services:
       - "8000:80"          # host:container
     restart: unless-stopped
     env_file:
-      - .env               # PG_CONN_STR=postgresql+psycopg://user:pass@db:5432/db
+      - .env               

@@ -1,0 +1,95 @@
+Auflistung der Ordnerpfade f�r Volume OS
+Volumeseriennummer : D497-FD13
+C:.
+|   .env
+|   .gitignore
+|   .python-version
+|   alter.py
+|   comands.txt
+|   docker-compose.override.yaml
+|   docker-compose.yaml
+|   Dockerfile
+|   OLD.py
+|   project_structure.txt
+|   pyproject.toml
+|   README.md
+|   requirements1.txt
+|   structure.txt
+|   test.py
+|   uv.lock
+|   
++---.vscode
+|       settings.json
+|       
++---app
+|   |   main.py
+|   |   __init__.py
+|   |   
+|   +---api
+|   |   |   __init__.py
+|   |   |   
+|   |   \---v1
+|   |           admin.py
+|   |           auth.py
+|   |           db_inspect.py
+|   |           health.py
+|   |           pages.py
+|   |           pickups.py
+|   |           user.py
+|   |           __init__.py
+|   |           
+|   +---core
+|   |       config.py
+|   |       deps.py
+|   |       logging.py
+|   |       security.py
+|   |       __init__.py
+|   |       
+|   +---db
+|   |   |   init_db.py
+|   |   |   migrations.py
+|   |   |   schema.py
+|   |   |   session.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---models
+|   |           init.py
+|   |           links.py
+|   |           pharmacy.py
+|   |           pickup.py
+|   |           pickup_photo.py
+|   |           region.py
+|   |           user.py
+|   |           __init__.py
+|   |           
+|   +---services
+|   |       dedup.py
+|   |       user_service.py
+|   |       __init__.py
+|   |       
+|   +---static
+|   |       app.js
+|   |       style.css
+|   |       
+|   \---templates
+|       |   404.html
+|       |   base.html
+|       |   error.html
+|       |   history.html
+|       |   login.html
+|       |   no_photo.html
+|       |   pickup.html
+|       |   success.html
+|       |   tasks.html
+|       |   __init__.py
+|       |   
+|       \---admin
+|               home.html
+|               
++---tests
+|   |   test_db.py
+|   |   
+|   \---api
+|       \---v1
+|               test_user.py
+|               

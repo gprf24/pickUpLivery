@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.db.models.user import UserCreate, UserRead
 from app.db.schema import SessionLocal
-from app.models.user import UserCreate, UserRead
 from app.services.user_service import UserService
 
 router = APIRouter()
