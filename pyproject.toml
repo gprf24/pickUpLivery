@@ -29,6 +29,8 @@ dependencies = [
 
   # --- Optional dev utils ---
   "watchfiles>=0.21.0",
+
+  "Pillow",
 ]
 
 [tool.pytest.ini_options]

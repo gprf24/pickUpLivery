@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlmodel import Session, select
 
 from app.core.deps import get_current_user, get_session, templates
+from app.core.image_utils import compress_image  # <-- NEW: image compression helper
 from app.db.models.pharmacy import Pharmacy
 from app.db.models.pickup import Pickup
 from app.db.models.pickup_photo import PickupPhoto
@@ -78,6 +79,7 @@ async def create_pickup(
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found")
 
+    # Create the pickup entry first
     pickup = Pickup(
         user_id=user.id,
         pharmacy_id=pharmacy_id,
@@ -86,21 +88,47 @@ async def create_pickup(
         status="done",
     )
     session.add(pickup)
-    session.flush()  # pickup.id ready
+    session.flush()  # pickup.id is now available
 
-    # Save only non-empty files
+    saved_count = 0
+
+    # Save only non-empty files, compressed via Pillow
     for idx, uf in provided:
-        data = await uf.read()
-        if not data:
-            continue  # skip zero-byte (some phones send empty placeholder)
+        # Ensure the underlying file pointer is at the beginning
+        # and check if the file has any data at all.
+        uf.file.seek(0, 2)  # move to end of file
+        size = uf.file.tell()
+        uf.file.seek(0)  # reset back to start
+
+        if size == 0:
+            # Some devices may send an empty placeholder file — skip those.
+            continue
+
+        try:
+            # Compress the image regardless of original format
+            image_bytes, content_type = compress_image(uf)
+        except Exception as exc:
+            # If compression fails, we skip this file instead of breaking the whole pickup
+            # You could also log the error or return 400 if you want stricter behavior.
+            continue
+
         session.add(
             PickupPhoto(
                 pickup_id=pickup.id,
                 idx=idx,
-                image_bytes=data,
-                image_content_type=getattr(uf, "content_type", None),
+                image_bytes=image_bytes,
+                image_content_type=content_type,
                 image_filename=uf.filename,
+                # public_id is generated automatically in the model (default_factory)
             )
+        )
+        saved_count += 1
+
+    if saved_count == 0:
+        # If all files were empty/invalid, rollback the pickup and report an error.
+        session.rollback()
+        raise HTTPException(
+            status_code=422, detail="All uploaded photos were empty or invalid."
         )
 
     session.commit()
@@ -111,26 +139,33 @@ async def create_pickup(
             "request": request,
             "pharmacy": pharmacy,
             "user": user,
-            "message": f"Pickup saved with {len(provided)} photo(s).",
+            "message": f"Pickup saved with {saved_count} photo(s).",
         },
     )
 
 
-@router.get("/pickup/{pickup_id}/photos/{idx}")
+@router.get("/photos/{photo_id}")
 def get_pickup_photo(
-    pickup_id: int,
-    idx: int,
+    photo_id: str,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
+    """
+    Return a single pickup photo by its public_id.
+
+    This avoids exposing predictable /pickup/{pickup_id}/photos/{idx} URLs
+    that could be brute-forced across regions/pharmacies.
+    """
     photo = session.exec(
-        select(PickupPhoto).where(
-            PickupPhoto.pickup_id == pickup_id,
-            PickupPhoto.idx == idx,
-        )
+        select(PickupPhoto).where(PickupPhoto.public_id == photo_id)
     ).first()
+
     if not photo or not photo.image_bytes:
         raise HTTPException(status_code=404, detail="Photo not found")
+
+    # TODO: Optionally enforce that the current user is allowed to see
+    #       this pickup (e.g., same region / same pharmacy group).
+
     return Response(
         content=photo.image_bytes,
         media_type=photo.image_content_type or "image/jpeg",

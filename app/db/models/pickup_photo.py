@@ -1,9 +1,15 @@
 # app/db/models/pickup_photo.py
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 
 from sqlalchemy import Column, LargeBinary, UniqueConstraint
 from sqlmodel import Field, SQLModel
+
+
+def generate_public_id() -> str:
+
+    return uuid4().hex
 
 
 class PickupPhoto(SQLModel, table=True):
@@ -21,9 +27,13 @@ class PickupPhoto(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     pickup_id: int = Field(index=True, foreign_key="PP_pickup.id")
     idx: int = Field(index=True)  # 1..4
-
+    public_id: str = Field(
+        default_factory=generate_public_id,
+        index=True,
+    )
     image_bytes: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
     image_content_type: Optional[str] = None
     image_filename: Optional[str] = None
 
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

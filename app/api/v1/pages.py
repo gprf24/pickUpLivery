@@ -206,32 +206,39 @@ def history_page(
 ):
     """
     Render pickup history.
-    - Tolerant filters.
+
+    - Tolerant filters (all query params are optional and parsed manually).
     - Rows grouped by day for visual separators.
-    - Photo count and (NEW) actual photo idx list per pickup to avoid 404 when slots are 1/3 etc.
+    - Photos: we now use per-pickup lists of photo public_ids (secure URLs)
+      instead of predictable /pickup/{pickup_id}/photos/{idx} paths.
     """
 
-    # 1) Parse filters
+    # 1) Parse filters from raw query strings
     rid = _parse_int(region_id)
     pid = _parse_int(pharmacy_id)
     did = _parse_int(driver_id)
     dfrom = _parse_date(date_from)
     dto = _parse_date(date_to)
+
+    # If user accidentally swapped dates, normalize them (from <= to)
     if dfrom and dto and dfrom > dto:
         dfrom, dto = dto, dfrom
 
-    # 2) Load selected for warnings
+    # 2) Load selected objects for consistency warnings (region/pharmacy/driver mapping)
     selected_region: Optional[Region] = session.get(Region, rid) if rid else None
     selected_pharmacy: Optional[Pharmacy] = session.get(Pharmacy, pid) if pid else None
     selected_driver: Optional[User] = session.get(User, did) if did else None
 
     warnings: List[str] = []
+
+    # Region and pharmacy must be consistent
     if selected_region and selected_pharmacy:
         if selected_pharmacy.region_id != selected_region.id:
             warnings.append(
                 f"Pharmacy “{selected_pharmacy.name}” does not belong to region “{selected_region.name}”."
             )
 
+    # Driver must be linked to pharmacy (via UserPharmacyLink)
     if selected_driver and selected_pharmacy:
         link_exists = (
             session.exec(
@@ -247,6 +254,7 @@ def history_page(
                 f"Driver “{_user_label(selected_driver)}” is not assigned to pharmacy “{selected_pharmacy.name}”."
             )
 
+    # Driver + region but no specific pharmacy: check if driver has any pharmacy in this region
     if selected_driver and selected_region and not selected_pharmacy:
         driver_pharmacy_ids = session.exec(
             sm_select(UserPharmacyLink.pharmacy_id).where(
@@ -287,6 +295,7 @@ def history_page(
         .order_by(Pickup.created_at.desc())
     )
 
+    # 4) Apply filters if they were parsed successfully
     if rid:
         stmt = stmt.where(Region.id == rid)
     if pid:
@@ -300,7 +309,7 @@ def history_page(
 
     raw_rows = session.exec(stmt).all()
 
-    # 4) Convert to (Pickup, Pharmacy, User)
+    # 5) Convert to (Pickup, Pharmacy, User) tuples and collect pickup_ids
     rows: List[Tuple[Pickup, Pharmacy, User]] = []
     pickup_ids: List[int] = []
     for tup in raw_rows:
@@ -312,31 +321,22 @@ def history_page(
         rows.append((pickup, pharmacy, user_row))
         pickup_ids.append(pickup.id)
 
-    # 5) Photo counts and ACTUAL idx lists (avoid 404 for missing slots)
-    photo_count_by_pickup: Dict[int, int] = {}
-    photo_idxs_by_pickup: Dict[int, List[int]] = {}
+    # 6) Photo public_ids per pickup (for secure non-guessable URLs)
+    photo_public_ids: Dict[int, List[str]] = {}
 
     if pickup_ids:
-        # counts
-        pc_stmt = (
-            sa_select(PickupPhoto.pickup_id, func.count(PickupPhoto.id))
-            .where(PickupPhoto.pickup_id.in_(pickup_ids))
-            .group_by(PickupPhoto.pickup_id)
-        )
-        for pid_val, cnt in session.exec(pc_stmt):
-            photo_count_by_pickup[int(pid_val)] = int(cnt)
-
-        # exact idx list, ordered
-        idx_stmt = (
-            sa_select(PickupPhoto.pickup_id, PickupPhoto.idx)
-            .where(PickupPhoto.pickup_id.in_(pickup_ids))
+        photo_stmt = (
+            sa_select(PickupPhoto.pickup_id, PickupPhoto.public_id).where(
+                PickupPhoto.pickup_id.in_(pickup_ids)
+            )
+            # Order by idx so thumbnails stay in "slot" order (1..4)
             .order_by(PickupPhoto.pickup_id, PickupPhoto.idx)
         )
-        for pid_val, idx in session.exec(idx_stmt):
+        for pid_val, public_id in session.exec(photo_stmt):
             pid_int = int(pid_val)
-            photo_idxs_by_pickup.setdefault(pid_int, []).append(int(idx))
+            photo_public_ids.setdefault(pid_int, []).append(public_id)
 
-    # 6) Group rows by day
+    # 7) Group rows by day for the UI
     groups: List[Dict[str, object]] = []
     last_day_key: Optional[date] = None
     for pickup, ph, u in rows:
@@ -346,20 +346,19 @@ def history_page(
             last_day_key = day_key
         groups[-1]["items"].append((pickup, ph, u))
 
-    # 7) Dropdown datasets
+    # 8) Dropdown datasets for filters
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
     users = session.exec(sm_select(User).order_by(User.login)).all()
 
-    # 8) Render
+    # 9) Render template
     return templates.TemplateResponse(
         "history.html",
         {
             "request": request,
             "user": user,
             "groups": groups,  # grouped rows by day
-            "photo_count": photo_count_by_pickup,  # pickup_id -> count
-            "photo_idxs": photo_idxs_by_pickup,  # pickup_id -> [idx1, idx3, ...]
+            "photo_public_ids": photo_public_ids,  # pickup_id -> [public_id1, public_id2, ...]
             "regions": regions,
             "pharmacies": pharmacies,
             "users": users,

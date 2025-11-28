@@ -5,7 +5,7 @@ FROM python:3.11.9-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# system deps (для колёс и сборок)
+# system dependencies (for wheels and builds)
 RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     ca-certificates \
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 WORKDIR /app
 
-# 1) ставим зависимости из [project].dependencies (без сборки локального пакета)
+# 1) install dependencies from [project].dependencies (without building the local package)
 COPY pyproject.toml README.md ./
 RUN python - <<'PY'
 import tomllib, subprocess, sys
@@ -22,14 +22,14 @@ with open('pyproject.toml','rb') as f:
 deps = data.get('project', {}).get('dependencies', [])
 if not deps:
     raise SystemExit("No [project].dependencies found in pyproject.toml")
-# обновим pip/setuptools/wheel — меньше сюрпризов со сборками
+# upgrade pip/setuptools/wheel — fewer surprises with builds
 subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip", "setuptools", "wheel"])
-# поставим зависимости проекта
+# install project dependencies
 subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", *deps])
 PY
 
-# 2) копируем остальное приложение
+# 2) copy the rest of the application
 COPY . .
 
-# 3) запуск (контейнер слушает 80; в compose маппинг 8000:80)
+# 3) start the server (container listens on port 80; docker-compose maps 8000:80)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]

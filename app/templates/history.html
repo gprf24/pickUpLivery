@@ -96,8 +96,6 @@
               </thead>
               <tbody>
                 {% for pickup, ph, u in items %}
-                  {% set idxs = (photo_idxs.get(pickup.id) or []) %}
-                  {% set photo_qty = idxs|length %}
                   <tr>
                     <td>
                       <time class="utc-to-local"
@@ -122,13 +120,19 @@
                     </td>
 
                     <td class="photos-cell">
+                      {# Get list of public_ids for this pickup #}
+                      {% set pids = (photo_public_ids.get(pickup.id) or []) %}
+                      {% set photo_qty = pids|length %}
+
                       {% if photo_qty > 0 %}
-                        <div class="photo-count">{{ photo_qty }} {{ "photo" if photo_qty == 1 else "photos" }}</div>
+                        <div class="photo-count">
+                          {{ photo_qty }} {{ "photo" if photo_qty == 1 else "photos" }}
+                        </div>
                         <div class="thumbs">
-                          {# IMPORTANT: use actual idxs to avoid 404 (non-sequential slots) #}
-                          {% for i in idxs[:4] %}
-                            <a href="/pickup/{{ pickup.id }}/photos/{{ i }}" target="_blank" rel="noopener">
-                              <img src="/pickup/{{ pickup.id }}/photos/{{ i }}" alt="photo {{ i }}" loading="lazy">
+                          {# Show up to 4 thumbnails using public_id-based URLs #}
+                          {% for pid in pids[:4] %}
+                            <a href="/photos/{{ pid }}" target="_blank" rel="noopener">
+                              <img src="/photos/{{ pid }}" alt="pickup photo" loading="lazy">
                             </a>
                           {% endfor %}
                         </div>
