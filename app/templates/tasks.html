@@ -10,7 +10,8 @@
 {% if pharmacies and pharmacies|length %}
   <section class="grid cols-2" style="gap: .9rem">
     {% for ph in pharmacies %}
-      <a class="task-card" href="/pickup/{{ ph.id }}">
+      {# Use public_id so internal numeric IDs are never exposed in URLs #}
+      <a class="task-card" href="/pickup/{{ ph.public_id }}">
         <div class="task-title">{{ ph.name }}</div>
         {% if ph.address %}
           <div class="task-sub muted">{{ ph.address }}</div>

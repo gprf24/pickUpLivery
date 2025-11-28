@@ -1,4 +1,3 @@
-# app/db/migrations.py
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -44,7 +43,7 @@ def run_minimal_migrations(engine: Engine) -> None:
             )
         )
 
-        # photo stored in DB
+        # photo stored in DB (legacy columns on PP_pickup)
         conn.execute(
             text(
                 """
@@ -86,6 +85,7 @@ def run_minimal_migrations(engine: Engine) -> None:
         """
             )
         )
+
         # --- Create PP_pickup_photo and backfill from legacy columns ---
         conn.execute(
             text(
@@ -121,6 +121,96 @@ def run_minimal_migrations(engine: Engine) -> None:
         ON ph.pickup_id = p.id
         WHERE p.image_bytes IS NOT NULL
         AND ph.id IS NULL
+        """
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # NEW: public_id for pharmacies (non-guessable external identifier)
+        # ------------------------------------------------------------------
+        conn.execute(
+            text(
+                """
+        ALTER TABLE "PP_pharmacy"
+        ADD COLUMN IF NOT EXISTS public_id varchar(64);
+        """
+            )
+        )
+
+        # Ensure pgcrypto is available for gen_random_bytes()
+        conn.execute(
+            text(
+                """
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+        """
+            )
+        )
+
+        # Backfill public_id for existing pharmacies where it's NULL
+        conn.execute(
+            text(
+                """
+        UPDATE "PP_pharmacy"
+        SET public_id = encode(gen_random_bytes(16), 'hex')
+        WHERE public_id IS NULL;
+        """
+            )
+        )
+
+        # Make sure public_id is NOT NULL and indexed
+        conn.execute(
+            text(
+                """
+        ALTER TABLE "PP_pharmacy"
+        ALTER COLUMN public_id SET NOT NULL;
+        """
+            )
+        )
+        conn.execute(
+            text(
+                """
+        CREATE INDEX IF NOT EXISTS ix_PP_pharmacy_public_id
+        ON "PP_pharmacy"(public_id);
+        """
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # NEW: public_id for pickup photos (non-guessable external identifier)
+        # ------------------------------------------------------------------
+        conn.execute(
+            text(
+                """
+        ALTER TABLE "PP_pickup_photo"
+        ADD COLUMN IF NOT EXISTS public_id varchar(64);
+        """
+            )
+        )
+
+        # Backfill public_id for existing photos where it's NULL
+        conn.execute(
+            text(
+                """
+        UPDATE "PP_pickup_photo"
+        SET public_id = encode(gen_random_bytes(16), 'hex')
+        WHERE public_id IS NULL;
+        """
+            )
+        )
+
+        conn.execute(
+            text(
+                """
+        ALTER TABLE "PP_pickup_photo"
+        ALTER COLUMN public_id SET NOT NULL;
+        """
+            )
+        )
+        conn.execute(
+            text(
+                """
+        CREATE INDEX IF NOT EXISTS ix_PP_pickup_photo_public_id
+        ON "PP_pickup_photo"(public_id);
         """
             )
         )

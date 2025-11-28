@@ -16,7 +16,11 @@
     <div class="alert alert-error error-msg" role="alert">{{ error }}</div>
   {% endif %}
 
-  <form id="pickupForm" class="form-grid" action="/pickup/{{ pharmacy.id }}" method="post" enctype="multipart/form-data">
+  <form id="pickupForm"
+        class="form-grid"
+        action="/pickup/{{ pharmacy.public_id }}"
+        method="post"
+        enctype="multipart/form-data">
     <!-- Coordinates -->
     <div class="grid cols-2">
       <label class="form-label">
@@ -29,7 +33,7 @@
       </label>
     </div>
 
-    <!-- Locate button capture="environment"-->
+    <!-- Locate button -->
     <div class="form-actions">
       <button type="button" class="btn btn-ghost" id="btnLocate">
         <span class="spinner" id="locSpinner" hidden></span>
@@ -49,7 +53,6 @@
             name="image1"
             id="image1"
             accept="image/*"
-           
             class="form-input"
           >
           <small class="muted">Take or choose one photo.</small>
@@ -66,7 +69,6 @@
             name="image2"
             id="image2"
             accept="image/*"
-
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -83,7 +85,6 @@
             name="image3"
             id="image3"
             accept="image/*"
-
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -100,7 +101,6 @@
             name="image4"
             id="image4"
             accept="image/*"
-
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -111,20 +111,22 @@
 
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Submit pickup</button>
-      
     </div>
   </form>
 </section>
 
 <style>
-  /* page-specific small styles */
   .photo-slots {
     display: grid;
     grid-template-columns: repeat(4, minmax(120px, 1fr));
     gap: 12px;
     margin: 10px 0 6px 0;
   }
-  .slot { border: 1px solid var(--border, rgba(255,255,255,0.12)); border-radius: 10px; padding: 10px; }
+  .slot {
+    border: 1px solid var(--border, rgba(255,255,255,0.12));
+    border-radius: 10px;
+    padding: 10px;
+  }
   .slot-preview {
     margin-top: 8px;
     min-height: 80px;
@@ -161,7 +163,6 @@
     .photo-slots { grid-template-columns: 1fr; }
   }
 
-  /* Avoid unwanted global aria-busy spinners */
   .btn[aria-busy]::before,
   .btn.btn-ghost[aria-busy]::before,
   .btn.is-loading::before {
