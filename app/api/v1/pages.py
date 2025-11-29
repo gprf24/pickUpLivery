@@ -101,7 +101,7 @@ def tasks_page(
 ):
     """
     Driver landing page.
-    Loads pharmacies assigned to the current user (via PP_user_pharmacy_link)
+    Loads pharmacies assigned to the current user (via user_pharmacy_links)
     and exposes them under 'pharmacies' (what tasks.html expects).
     """
     links = session.exec(
@@ -409,11 +409,13 @@ def admin_home(
 
     # --- Quick table counts ---
     tables = [
-        "PP_user",
-        "PP_region",
-        "PP_pharmacy",
-        "PP_pickup",
-        "PP_user_pharmacy_link",
+        "users",
+        "regions",
+        "pharmacies",
+        "pickups",
+        "user_pharmacy_links",
+        "pickup_photos",
+        "app_settings",
     ]
     counts: Dict[str, Optional[int]] = {}
     for tbl in tables:

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Admin Settings · PickUp Livery{% endblock %}
+
+{% block content %}
+<section class="page-hero card">
+  <h2 class="page-title">Global settings</h2>
+  <p class="lead">
+    Configure pickup limits, GPS requirements and photo behaviour for the whole application.
+  </p>
+</section>
+
+<section class="card">
+  <form method="post" action="/admin/settings" class="form-grid">
+    <label class="form-label">
+      Max pickups per driver &amp; pharmacy per day
+      <input
+        type="number"
+        class="form-input"
+        name="allowed_pickups_per_day"
+        min="1"
+        value="{{ settings.allowed_pickups_per_day }}"
+        required
+      >
+      <small class="muted">
+        Applied per (driver, pharmacy) combination. When the limit is reached,
+        new pickups will be rejected with HTTP 429.
+      </small>
+    </label>
+
+    <label class="form-label checkbox-inline">
+      <input
+        type="checkbox"
+        name="require_pickup_location_global"
+        value="1"
+        {% if settings.require_pickup_location_global %}checked{% endif %}
+      >
+      Require GPS location globally
+      <small class="muted">
+        If enabled, location is required by default. Individual users can override
+        this in their profile (Require GPS = yes/no/inherit).
+      </small>
+    </label>
+
+    <label class="form-label">
+      Minimal required photos per pickup
+      <input
+        type="number"
+        class="form-input"
+        name="min_required_photos"
+        min="0"
+        max="4"
+        value="{{ settings.min_required_photos }}"
+        required
+      >
+      <small class="muted">
+        The backend enforces this value on submit. Frontend shows it on the pickup form
+        and prevents sending fewer photos.
+      </small>
+    </label>
+
+    <label class="form-label">
+      Photo source mode
+      <select name="photo_source_mode" class="form-input">
+        <option value="camera_or_upload"
+          {% if settings.photo_source_mode == 'camera_or_upload' %}selected{% endif %}
+        >
+          Camera or upload from device
+        </option>
+        <option value="camera_only"
+          {% if settings.photo_source_mode == 'camera_only' %}selected{% endif %}
+        >
+          Prefer camera only (mobile hint)
+        </option>
+      </select>
+      <small class="muted">
+        “Camera only” is a best-effort hint for mobile browsers using the
+        <code>capture</code> attribute. It cannot fully forbid file uploads
+        on all platforms.
+      </small>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save settings</button>
+      <a href="/admin" class="btn btn-secondary">Back to admin</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

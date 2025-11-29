@@ -1,35 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Admin (Glass) · PickUp Livery{% endblock %}
+{% block title %}Admin · PickUp Livery{% endblock %}
 
 {% block content %}
 <section class="admin-glass">
 
-   <!--======= HERO ======= -->
+  <!--======= HERO =======-->
   <header class="admin-hero card">
     <h1 class="g-title">Admin panel</h1>
     <p class="g-lead">
-      Quick stats, user/region/pharmacy management — redesigned with glass sections & expanders.
+      Quick stats, user/region/pharmacy management — with per-user GPS settings and global config.
     </p>
-    <!--<div class="g-actions">
-      <a href="/admin/db-check" target="_blank" class="btn btn-secondary">DB Check</a>
+    <div class="g-actions">
+      <a href="/admin/settings" class="btn btn-secondary">Global settings</a>
       <a href="/admin/dedup-preview" target="_blank" class="btn btn-secondary">Dup&nbsp;Preview</a>
-    </div>-->
+    </div>
   </header>
 
-  <!-- ======= STATISTICS ======= -->
+  <!--======= STATISTICS =======-->
   <details class="g-section" open>
     <summary><h2>📊 Statistics</h2></summary>
     <ul class="g-badges">
-      <li class="badge">Users: {{ stats.counts.PP_user or 0 }}</li>
-      <li class="badge">Regions: {{ stats.counts.PP_region or 0 }}</li>
-      <li class="badge">Pharmacies: {{ stats.counts.PP_pharmacy or 0 }}</li>
-      <li class="badge">Pickups: {{ stats.counts.PP_pickup or 0 }}</li>
-      <li class="badge">Links: {{ stats.counts.PP_user_pharmacy_link or 0 }}</li>
+      <li class="badge">Users: {{ stats.counts.users or 0 }}</li>
+      <li class="badge">Regions: {{ stats.counts.regions or 0 }}</li>
+      <li class="badge">Pharmacies: {{ stats.counts.pharmacies or 0 }}</li>
+      <li class="badge">Pickups: {{ stats.counts.pickups or 0 }}</li>
+      <li class="badge">Links: {{ stats.counts.user_pharmacy_links or 0 }}</li>
+      <li class="badge">Photos: {{ stats.counts.pickup_photos or 0 }}</li>
+      <li class="badge">App settings rows: {{ stats.counts.app_settings or 0 }}</li>
     </ul>
   </details>
 
-  <!-- ======= USERS ======= -->
-  <details class="g-section" >
+  <!--======= USERS =======-->
+  <details class="g-section">
     <summary><h2>👤 Users</h2></summary>
 
     <!-- Create user -->
@@ -48,6 +50,16 @@
             <option value="admin">admin</option>
           </select>
         </label>
+
+        <label class="form-label">
+          Require GPS location
+          <input type="checkbox" name="require_pickup_location" value="1">
+          <small class="muted">
+            If checked, this user must always send location
+            (overrides global GPS setting).
+          </small>
+        </label>
+
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">Create</button>
         </div>
@@ -60,7 +72,14 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID</th><th>Login</th><th>Role</th><th>Active</th><th>Actions</th></tr>
+            <tr>
+              <th>ID</th>
+              <th>Login</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th>Require GPS</th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody>
             {% for u in users %}
@@ -70,14 +89,46 @@
               <td>{{ u.role }}</td>
               <td>{{ 'yes' if u.is_active else 'no' }}</td>
               <td>
-                <div class="form-actions">
+                <div style="display:flex;flex-direction:column;gap:.25rem;">
+                  <div>
+                    {% if u.require_pickup_location is none %}
+                      <span class="badge">inherit</span>
+                    {% elif u.require_pickup_location %}
+                      <span class="badge ok">yes</span>
+                    {% else %}
+                      <span class="badge warn">no</span>
+                    {% endif %}
+                  </div>
+                  <form action="/admin/users/{{ u.id }}/gps" method="post" class="form-grid"
+                        style="grid-template-columns:1fr auto;gap:.35rem;">
+                    <select name="gps_mode" class="form-input" required>
+                      <option value="inherit"
+                        {% if u.require_pickup_location is none %}selected{% endif %}>
+                        Inherit global
+                      </option>
+                      <option value="require"
+                        {% if u.require_pickup_location is true %}selected{% endif %}>
+                        Require GPS
+                      </option>
+                      <option value="no"
+                        {% if u.require_pickup_location is false %}selected{% endif %}>
+                        GPS not required
+                      </option>
+                    </select>
+                    <button type="submit" class="btn btn-secondary">Update</button>
+                  </form>
+                </div>
+              </td>
+              <td>
+                <div class="form-actions" style="flex-direction:column;gap:.35rem;">
                   <form action="/admin/users/{{ u.id }}/toggle" method="post">
                     <button type="submit" class="btn btn-secondary">
                       {{ 'Deactivate' if u.is_active else 'Activate' }}
                     </button>
                   </form>
+
                   <form action="/admin/users/{{ u.id }}/password" method="post"
-                        class="form-grid" style="grid-template-columns:1fr auto;gap:.5rem">
+                        class="form-grid" style="grid-template-columns:1fr auto;gap:.35rem;">
                     <input type="password" name="new_password"
                            placeholder="new password" minlength="6" required class="form-input">
                     <button type="submit" class="btn btn-primary">Set</button>
@@ -92,7 +143,7 @@
     </div>
   </details>
 
-  <!-- ======= REGIONS ======= -->
+  <!--======= REGIONS =======-->
   <details class="g-section">
     <summary><h2>🗺️ Regions</h2></summary>
     <div class="g-card">
@@ -135,7 +186,7 @@
     </div>
   </details>
 
-  <!-- ======= PHARMACIES ======= -->
+  <!--======= PHARMACIES =======-->
   <details class="g-section">
     <summary><h2>🏥 Pharmacies</h2></summary>
 
@@ -166,7 +217,14 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID</th><th>Name</th><th>Region</th><th>Active</th><th>Assigned users</th><th>Actions</th></tr>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Region</th>
+              <th>Active</th>
+              <th>Assigned users</th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody>
             {% for p in pharmacies %}
@@ -218,7 +276,6 @@
 </section>
 
 <style>
-  /* Glass + Accordion Admin */
   .admin-glass { display:flex; flex-direction:column; gap:1.25rem; }
   .admin-hero {
     text-align:center; background:rgba(255,255,255,.05);

@@ -88,6 +88,8 @@ body{
 .site-footer{
   border-top:1px solid var(--border);
   background:var(--bg-elev);
+  text-align: right;
+
 }
 .site-footer .container{padding:1rem}
 

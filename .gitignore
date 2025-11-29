@@ -3,3 +3,6 @@ test.py
 .env
 alter.py
 .vscode
+app/__pycache__
+app/core/__pycache__
+app/db/__pycache__

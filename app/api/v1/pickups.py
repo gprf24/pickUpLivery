@@ -1,16 +1,18 @@
 # app/api/v1/pickups.py
 """
-Pickup routes for 4 distinct photo slots (image1..image4).
-Now robust against empty uploads, supports partial slots,
-enforces access control for pharmacies and photos, and limits
-daily pickups per (driver, pharmacy) to mitigate abuse.
+Pickup routes for up to 4 distinct photo slots (image1..image4).
+
+Key features:
+- Robust against empty uploads, supports partial slots.
+- Enforces access control for pharmacies and photos.
+- Limits daily pickups per (driver, pharmacy) using AppSettings.
+- Enforces GPS requirement based on global + per-user settings.
 """
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, time, timezone
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -18,17 +20,21 @@ from sqlalchemy import func
 from sqlalchemy import select as sa_select
 from sqlmodel import Session, select
 
-from app.core.deps import get_current_user, get_session, templates
+from app.core.deps import get_app_settings, get_current_user, get_session, templates
 from app.core.image_utils import compress_image
 from app.db.models.links import UserPharmacyLink
 from app.db.models.pharmacy import Pharmacy
 from app.db.models.pickup import Pickup
 from app.db.models.pickup_photo import PickupPhoto
+from app.db.models.settings import AppSettings
 from app.db.models.user import User
 
 router = APIRouter()
 
 
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
 def _parse_float_or_none(s: Optional[str]) -> Optional[float]:
     """Convert string to float or None."""
     if s in (None, "", "null", "undefined"):
@@ -37,25 +43,6 @@ def _parse_float_or_none(s: Optional[str]) -> Optional[float]:
         return float(s)
     except Exception:
         return None
-
-
-def _is_true_flag(value: Optional[str]) -> bool:
-    """
-    Helper to interpret env flags like 1/true/yes/on as True.
-    Everything else is False.
-    """
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
-def _require_location() -> bool:
-    """
-    Read REQUIRE_PICKUP_LOCATION from environment.
-
-    If True, pickups MUST include latitude & longitude.
-    """
-    return _is_true_flag(os.getenv("REQUIRE_PICKUP_LOCATION", "0"))
 
 
 def _ensure_user_can_access_pharmacy(
@@ -69,11 +56,9 @@ def _ensure_user_can_access_pharmacy(
     - Admins can access all pharmacies.
     - Drivers must be linked via UserPharmacyLink.
     """
-    # Admins have full access
     if getattr(user, "role", None) == "admin":
         return
 
-    # For non-admins, require an explicit user-pharmacy link
     link_exists = (
         session.exec(
             select(UserPharmacyLink).where(
@@ -83,15 +68,15 @@ def _ensure_user_can_access_pharmacy(
         ).first()
         is not None
     )
-
     if not link_exists:
-        # You can also return 404 if you want to hide the existence of this pharmacy.
+        # You could also return 404 to hide pharmacy existence.
         raise HTTPException(
-            status_code=403, detail="Not allowed to access this pharmacy."
+            status_code=403,
+            detail="Not allowed to access this pharmacy.",
         )
 
 
-def _get_utc_today_bounds() -> tuple[datetime, datetime]:
+def _get_utc_today_bounds() -> Tuple[datetime, datetime]:
     """
     Return the UTC datetime range [start_of_today, end_of_today].
 
@@ -103,22 +88,16 @@ def _get_utc_today_bounds() -> tuple[datetime, datetime]:
     return start, end
 
 
-def _get_daily_pickup_limit() -> int:
+def _resolve_require_location(user: User, settings: AppSettings) -> bool:
     """
-    Read the daily pickup limit from environment.
+    Combine per-user and global GPS requirement:
 
-    Env var: PICKUP_DAILY_LIMIT_PER_DRIVER_PHARMACY
-    - defaults to 3 if unset or invalid
-    - minimum enforced value is 1
+    - If user.require_pickup_location is not None → use it.
+    - Otherwise → fall back to settings.require_pickup_location_global.
     """
-    raw = os.getenv("PICKUP_DAILY_LIMIT_PER_DRIVER_PHARMACY", "3")
-    try:
-        value = int(raw)
-    except ValueError:
-        value = 3
-    if value < 1:
-        value = 1
-    return value
+    if user.require_pickup_location is not None:
+        return bool(user.require_pickup_location)
+    return bool(settings.require_pickup_location_global)
 
 
 # ---------------------------------------------------------------------
@@ -130,6 +109,7 @@ def pickup_form(
     pharmacy_pid: str,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
 ):
     """
     Render the pickup form for a single pharmacy.
@@ -137,9 +117,6 @@ def pickup_form(
     Access is restricted:
       - Admin: any pharmacy.
       - Driver: only pharmacies assigned to this user.
-
-    The pharmacy is resolved by its public_id (pharmacy_pid), not by
-    the internal numeric primary key.
     """
     pharmacy = session.exec(
         select(Pharmacy).where(Pharmacy.public_id == pharmacy_pid)
@@ -147,8 +124,9 @@ def pickup_form(
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found")
 
-    # Enforce access control for this pharmacy
     _ensure_user_can_access_pharmacy(session, user, pharmacy)
+
+    require_location = _resolve_require_location(user, settings)
 
     return templates.TemplateResponse(
         "pickup.html",
@@ -157,8 +135,9 @@ def pickup_form(
             "pharmacy": pharmacy,
             "user": user,
             "error": None,
-            # expose flag to template so we can show UX hint
-            "require_location": _require_location(),
+            "require_location": require_location,
+            "photo_source_mode": settings.photo_source_mode,
+            "min_required_photos": settings.min_required_photos,
         },
     )
 
@@ -178,52 +157,76 @@ async def create_pickup(
     lon: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
 ):
     """
     Create a pickup entry and attach up to 4 photos.
 
+    Behaviour:
     - Only non-empty files are processed.
-    - At least one valid (non-empty) photo is required.
-    - Access to the pharmacy is enforced (admin or user-pharmacy link).
-    - A daily pickup limit per (driver, pharmacy) is enforced to mitigate abuse.
-    - If REQUIRE_PICKUP_LOCATION is enabled, latitude & longitude are required.
+    - Enforces minimal number of photos via AppSettings.min_required_photos.
+    - Enforces GPS requirement via per-user + global settings.
+    - Enforces daily pickup limit via AppSettings.allowed_pickups_per_day
+      per (driver, pharmacy).
     """
-    # Collect only files that actually have content (filename not empty)
-    provided: List[tuple[int, UploadFile]] = []
-    for idx, uf in enumerate((image1, image2, image3, image4), start=1):
-        if uf and uf.filename:
-            provided.append((idx, uf))
-
-    if len(provided) == 0:
-        raise HTTPException(status_code=422, detail="At least one photo is required.")
-
-    latitude = _parse_float_or_none(lat)
-    longitude = _parse_float_or_none(lon)
-
-    # Enforce location requirement if flag is enabled
-    if _require_location() and (latitude is None or longitude is None):
-        # Можно вместо HTTPException перерендерить pickup.html с error,
-        # но у тебя глобальный error.html уже настроен под 422, так что пока так.
-        raise HTTPException(
-            status_code=422,
-            detail="Location (latitude and longitude) is required for this pickup.",
-        )
-
-    # Resolve pharmacy by public_id
+    # Resolve pharmacy by public_id early (for re-render)
     pharmacy = session.exec(
         select(Pharmacy).where(Pharmacy.public_id == pharmacy_pid)
     ).first()
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found")
 
-    # Enforce access control for this pharmacy
     _ensure_user_can_access_pharmacy(session, user, pharmacy)
 
+    require_location = _resolve_require_location(user, settings)
+
+    # Collect only files that actually have content (filename not empty)
+    provided: List[tuple[int, UploadFile]] = []
+    for idx, uf in enumerate((image1, image2, image3, image4), start=1):
+        if uf and uf.filename:
+            provided.append((idx, uf))
+
+    # Enforce minimal number of photos
+    min_photos = max(0, settings.min_required_photos or 0)
+    if len(provided) < max(1, min_photos):
+        # Render form again with a user-friendly error
+        return templates.TemplateResponse(
+            "pickup.html",
+            {
+                "request": request,
+                "pharmacy": pharmacy,
+                "user": user,
+                "error": f"At least {max(1, min_photos)} photo(s) are required.",
+                "require_location": require_location,
+                "photo_source_mode": settings.photo_source_mode,
+                "min_required_photos": settings.min_required_photos,
+            },
+            status_code=422,
+        )
+
+    latitude = _parse_float_or_none(lat)
+    longitude = _parse_float_or_none(lon)
+
+    # Enforce location requirement if flag is enabled
+    if require_location and (latitude is None or longitude is None):
+        return templates.TemplateResponse(
+            "pickup.html",
+            {
+                "request": request,
+                "pharmacy": pharmacy,
+                "user": user,
+                "error": "Location (latitude and longitude) is required for this pickup.",
+                "require_location": require_location,
+                "photo_source_mode": settings.photo_source_mode,
+                "min_required_photos": settings.min_required_photos,
+            },
+            status_code=422,
+        )
+
     # Enforce daily pickup limit per (driver, pharmacy)
-    limit = _get_daily_pickup_limit()
+    limit = max(1, settings.allowed_pickups_per_day or 1)
     start_utc, end_utc = _get_utc_today_bounds()
 
-    # Count how many pickups already exist for this driver+pharmacy today
     count_stmt = sa_select(func.count(Pickup.id)).where(
         Pickup.pharmacy_id == pharmacy.id,
         Pickup.user_id == user.id,
@@ -233,8 +236,6 @@ async def create_pickup(
     existing_count = session.exec(count_stmt).scalar_one() or 0
 
     if existing_count >= limit:
-        # Too many pickups already recorded today for this driver+pharmacy pair.
-        # 429 Too Many Requests is semantically appropriate here.
         raise HTTPException(
             status_code=429,
             detail=(
@@ -259,7 +260,6 @@ async def create_pickup(
     # Save only non-empty files, compressed via Pillow
     for idx, uf in provided:
         # Ensure the underlying file pointer is at the beginning
-        # and check if the file has any data at all.
         uf.file.seek(0, 2)  # move to end of file
         size = uf.file.tell()
         uf.file.seek(0)  # reset back to start
@@ -269,11 +269,9 @@ async def create_pickup(
             continue
 
         try:
-            # Compress the image regardless of original format
             image_bytes, content_type = compress_image(uf)
         except Exception:
-            # If compression fails, we skip this file instead of breaking the whole pickup.
-            # You could also log the error or return 400 if you want stricter behavior.
+            # If compression fails, skip this file instead of breaking the whole pickup.
             continue
 
         session.add(
@@ -283,16 +281,24 @@ async def create_pickup(
                 image_bytes=image_bytes,
                 image_content_type=content_type,
                 image_filename=uf.filename,
-                # public_id is generated automatically in the model (default_factory)
             )
         )
         saved_count += 1
 
     if saved_count == 0:
-        # If all files were empty/invalid, rollback the pickup and report an error.
         session.rollback()
-        raise HTTPException(
-            status_code=422, detail="All uploaded photos were empty or invalid."
+        return templates.TemplateResponse(
+            "pickup.html",
+            {
+                "request": request,
+                "pharmacy": pharmacy,
+                "user": user,
+                "error": "All uploaded photos were empty or invalid.",
+                "require_location": require_location,
+                "photo_source_mode": settings.photo_source_mode,
+                "min_required_photos": settings.min_required_photos,
+            },
+            status_code=422,
         )
 
     session.commit()
@@ -305,9 +311,12 @@ async def create_pickup(
             "user": user,
             "message": (
                 f"Pickup saved with {saved_count} photo(s). "
-                f"Used {existing_count + 1}/{limit} pickups for today for this pharmacy & driver."
+                f"Used {existing_count + 1}/{limit} pickups for today "
+                "for this pharmacy & driver."
             ),
-            "require_location": _require_location(),
+            "require_location": require_location,
+            "photo_source_mode": settings.photo_source_mode,
+            "min_required_photos": settings.min_required_photos,
         },
     )
 
@@ -336,7 +345,6 @@ def get_pickup_photo(
     if not photo or not photo.image_bytes:
         raise HTTPException(status_code=404, detail="Photo not found")
 
-    # Resolve the pickup and its pharmacy to enforce access control
     pickup = session.get(Pickup, photo.pickup_id)
     if not pickup:
         raise HTTPException(status_code=404, detail="Pickup not found for this photo")
@@ -345,7 +353,6 @@ def get_pickup_photo(
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found for this photo")
 
-    # Enforce that the current user can access this pharmacy
     _ensure_user_can_access_pharmacy(session, user, pharmacy)
 
     return Response(

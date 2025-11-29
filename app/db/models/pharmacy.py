@@ -17,16 +17,15 @@ class Pharmacy(SQLModel, table=True):
     Pharmacy entity.
 
     Notes:
-    - The public_id allows exposing pharmacies in URLs without leaking sequential IDs.
-    - No ORM relationships are defined here to keep the model lightweight.
-    - region_id kept as an optional FK to avoid strict coupling on insert.
+    - Uses a non-guessable `public_id` for URLs (instead of integer PK).
+    - `region_id` is a nullable FK to `regions.id`.
     """
 
-    __tablename__ = "PP_pharmacy"
+    __tablename__ = "pharmacies"
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    # NEW: non-guessable public identifier
+    # Non-guessable public identifier
     public_id: str = Field(
         default_factory=generate_public_id,
         index=True,
@@ -37,8 +36,8 @@ class Pharmacy(SQLModel, table=True):
 
     region_id: Optional[int] = Field(
         default=None,
-        foreign_key="PP_region.id",
-        description="Foreign key referencing PP_region table.",
+        foreign_key="regions.id",
+        description="Foreign key referencing regions table.",
     )
 
     address: Optional[str] = None

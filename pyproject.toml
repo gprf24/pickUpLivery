@@ -6,32 +6,25 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 
 dependencies = [
-  # --- FastAPI core ---
   "fastapi>=0.115.0",
-  "uvicorn[standard]>=0.30.0",   # hot reload, httptools, uvloop, etc.
+  "uvicorn[standard]>=0.30.0",
 
-  # --- Database / ORM ---
   "sqlmodel>=0.0.22",
   "sqlalchemy>=2.0.30",
   "psycopg[binary]>=3.2.1",
 
-  # --- Environment & settings ---
   "python-dotenv>=1.0.1",
   "pydantic-settings>=2.2.1",
 
-  # --- Passwords & security ---
-  "passlib[bcrypt]>=1.7.4",   # >=1.7.4 fixes bcrypt 4+ compatibility
-  "bcrypt>=4.1.2,<5.0",       # force modern PyCA version, avoid 5.x forks
-
-  # --- Templates & forms ---
   "jinja2>=3.1.4",
   "python-multipart>=0.0.9",
 
-  # --- Optional dev utils ---
   "watchfiles>=0.21.0",
 
   "Pillow",
+  "argon2-cffi"
 ]
+
 
 [tool.pytest.ini_options]
 pythonpath = "."

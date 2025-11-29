@@ -3,9 +3,15 @@
 {% block title %}Pickup — {{ pharmacy.name if pharmacy else 'Unknown Pharmacy' }}{% endblock %}
 
 {% block content %}
+{% set min_photos = (min_required_photos if min_required_photos is not none else 1) %}
+{% set is_admin = (user.role == "admin") %}
+
 <section class="page-hero card">
   <h2 class="page-title">Pickup at {{ pharmacy.name }}</h2>
-  <p class="lead">Take photos one-by-one into four slots. At least one photo is required.</p>
+  <p class="lead">
+    Take photos one-by-one into four slots.
+    At least {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }} is required.
+  </p>
 </section>
 
 <section class="card">
@@ -21,8 +27,6 @@
         action="/pickup/{{ pharmacy.public_id }}"
         method="post"
         enctype="multipart/form-data">
-
-    {% set is_admin = (user.role == "admin") %}
 
     {# ------------------ Coordinates block ------------------ #}
     {% if is_admin %}
@@ -118,9 +122,12 @@
             name="image1"
             id="image1"
             accept="image/*"
+            {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
             class="form-input"
           >
-          <small class="muted">Take or choose one photo.</small>
+          <small class="muted">
+            Required — counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+          </small>
         </label>
         <div class="slot-preview" id="preview1" aria-live="polite"></div>
       </div>
@@ -134,6 +141,7 @@
             name="image2"
             id="image2"
             accept="image/*"
+            {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -150,6 +158,7 @@
             name="image3"
             id="image3"
             accept="image/*"
+            {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -166,6 +175,7 @@
             name="image4"
             id="image4"
             accept="image/*"
+            {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
             class="form-input"
           >
           <small class="muted">Optional.</small>
@@ -239,9 +249,10 @@
 
 {% block scripts %}
 <script>
-  // pass backend flag + role flag into JS
+  // pass backend flags into JS
   const REQUIRE_LOCATION = {{ 'true' if require_location else 'false' }};
   const IS_ADMIN = {{ 'true' if user.role == "admin" else 'false' }};
+  const MIN_REQUIRED_PHOTOS = {{ min_photos | int }};
 
   // ---------- per-slot preview ----------
   function bindPreview(inputId, previewId) {
@@ -270,7 +281,7 @@
   bindPreview('image3', 'preview3');
   bindPreview('image4', 'preview4');
 
-  // ---------- require at least one photo (and location if enabled) ----------
+  // ---------- require at least MIN_REQUIRED_PHOTOS photos (and location if enabled) ----------
   const form = document.getElementById('pickupForm');
   form?.addEventListener('submit', (e) => {
     const i1 = document.getElementById('image1');
@@ -278,20 +289,20 @@
     const i3 = document.getElementById('image3');
     const i4 = document.getElementById('image4');
 
-    const hasAny =
+    const total =
       (i1?.files?.length || 0) +
       (i2?.files?.length || 0) +
       (i3?.files?.length || 0) +
-      (i4?.files?.length || 0) > 0;
+      (i4?.files?.length || 0);
 
-    if (!hasAny) {
+    if (total < MIN_REQUIRED_PHOTOS) {
       e.preventDefault();
-      alert('Please attach at least one photo (any slot).');
+      alert(`Please attach at least ${MIN_REQUIRED_PHOTOS} photo${MIN_REQUIRED_PHOTOS === 1 ? '' : 's'} (any slot).`);
       return false;
     }
 
     if (REQUIRE_LOCATION) {
-      const latField = document.getElementById('lat');  // for admin it's visible, for driver it's hidden
+      const latField = document.getElementById('lat');  // admin: visible, driver: hidden
       const lonField = document.getElementById('lon');
       const lat = latField?.value.trim();
       const lon = lonField?.value.trim();

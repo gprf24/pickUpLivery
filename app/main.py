@@ -4,23 +4,26 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.admin import router as admin_router
 from app.api.v1.auth import router as auth_router
-from app.api.v1.db_inspect import router as db_router  # <-- ADD
+from app.api.v1.db_inspect import router as db_router
+from app.api.v1.health import router as health_router
 from app.api.v1.pages import router as pages_router
 from app.api.v1.pickups import router as pickups_router
-from app.db.migrations import run_minimal_migrations
-
-# DB init only; we will wire routers later
-from app.db.session import get_engine, init_db
+from app.core.deps import templates
+from app.db.session import init_db
 
 # -----------------------------------------------------------------------------
 # Logging: make sure we see clear startup errors in the console
 # -----------------------------------------------------------------------------
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 log = logging.getLogger("app")
 
@@ -41,29 +44,44 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 # Mount /static → app/static
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.include_router(db_router, prefix="/api/v1", tags=["db"])
-app.include_router(pickups_router, include_in_schema=False)
 
-# app.include_router(admin_router, include_in_schema=False)
+# -----------------------------------------------------------------------------
+# Routers
+# -----------------------------------------------------------------------------
+# Health / DB inspect
+app.include_router(health_router, prefix="/api/v1", tags=["health"])
+app.include_router(db_router, prefix="/api/v1", tags=["db"])
+
+# Core app routes
+app.include_router(pickups_router, include_in_schema=False)
 app.include_router(admin_router, tags=["admin"])
 app.include_router(pages_router, include_in_schema=False)
-
 app.include_router(auth_router, include_in_schema=False)
 
 
 # -----------------------------------------------------------------------------
-# Startup: create tables if missing, but never crash the app on error.
-# We log the error so /ping still works and you can debug via console.
+# Startup: create tables if missing (non-destructive)
 # -----------------------------------------------------------------------------
 @app.on_event("startup")
 def _startup() -> None:
+    """
+    On startup, ensure that all SQLModel tables exist.
+
+    This is NON-destructive:
+    - It will create missing tables.
+    - It will NOT drop or alter existing tables.
+
+    For a full reset + demo data in development, use:
+        from app.db.init_db import reset_and_seed_db
+        reset_and_seed_db()
+    as a one-off manual action (e.g. from a Python shell).
+    """
     try:
-        init_db()  # creates tables if missing
-        # run idempotent migrations (adds columns if missing)
-        run_minimal_migrations(get_engine())
-        log.info("DB init + minimal migrations completed.")
+        init_db()
+        log.info("DB init completed (create_all for SQLModel metadata).")
     except Exception as e:
-        log.exception("DB init/migrations failed: %s", e)
+        # Never crash the app on init errors — log and allow /ping to work.
+        log.exception("DB init failed: %s", e)
 
 
 # -----------------------------------------------------------------------------
@@ -75,13 +93,9 @@ def ping():
     return {"ok": True}
 
 
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-from app.core.deps import templates
-
-
+# -----------------------------------------------------------------------------
+# Exception handlers
+# -----------------------------------------------------------------------------
 @app.exception_handler(StarletteHTTPException)
 async def custom_http_exception_handler(request, exc):
     """Custom 404 and generic HTTP error pages rendered via Jinja templates."""
@@ -113,34 +127,3 @@ async def validation_exception_handler(request, exc: RequestValidationError):
         },
         status_code=422,
     )
-
-
-# # app/main.py
-# # Keep it simple: home + health + DB inspection routes.
-
-# import os
-
-# from fastapi import FastAPI
-
-# from app.api.v1.db_inspect import router as db_router
-# from app.api.v1.health import router as health_router
-
-# app = FastAPI(title="PickUp Livery (DB inspect)", debug=os.getenv("DEBUG") == "1")
-
-
-# @app.get("/")
-# def home():
-#     return {"status": "ok", "message": "app is running"}
-
-
-# # API v1
-# app.include_router(health_router, prefix="/api/v1", tags=["health"])
-# app.include_router(db_router, prefix="/api/v1", tags=["db"])
-
-
-# @app.get("/ping")
-# def ping():
-#     return {"ok": True}
-#     return {"ok": True}
-#     return {"ok": True}
-#     return {"ok": True}

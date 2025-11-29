@@ -1,28 +1,34 @@
-# app/db/models/pickup.py
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Column, LargeBinary
 from sqlmodel import Field, SQLModel
 
+# app/db/models/pickup.py
+
 
 class Pickup(SQLModel, table=True):
     """
-    Pickup entry stored in DB:
-    - Photo bytes are stored directly in the DB (image_bytes).
-    - We keep content-type and original filename as metadata.
+    Pickup entry stored in DB.
+
+    Notes:
+    - Photos are now primarily stored in the separate `pickup_photos` table,
+      but legacy columns (image_bytes, image_content_type, image_filename)
+      are kept for backwards compatibility.
     - Coordinates are optional.
     - Simple 'status' string is used for now ("done" by default).
     """
 
-    __tablename__ = "PP_pickup"
+    __tablename__ = "pickups"
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    user_id: int = Field(index=True, foreign_key="PP_user.id")
-    pharmacy_id: int = Field(index=True, foreign_key="PP_pharmacy.id")
+    user_id: int = Field(index=True, foreign_key="users.id")
+    pharmacy_id: int = Field(index=True, foreign_key="pharmacies.id")
 
-    # Photo stored directly in DB
+    # Legacy single-photo storage (can be removed later if unused)
     image_bytes: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
     image_content_type: Optional[str] = None
     image_filename: Optional[str] = None
