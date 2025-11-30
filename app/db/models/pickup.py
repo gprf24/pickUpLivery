@@ -1,12 +1,11 @@
+# app/db/models/pickup.py
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, LargeBinary
+from sqlalchemy import Column, LargeBinary, Text
 from sqlmodel import Field, SQLModel
-
-# app/db/models/pickup.py
 
 
 class Pickup(SQLModel, table=True):
@@ -37,7 +36,15 @@ class Pickup(SQLModel, table=True):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
+    # Optional free-text comment from driver
+    comment: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Optional driver comment for this pickup",
+    )
+
     # Status (simple text state)
     status: str = Field(default="done", index=True)
 
+    # Timestamp stored in UTC
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

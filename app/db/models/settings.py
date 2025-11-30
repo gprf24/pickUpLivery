@@ -25,6 +25,10 @@ class AppSettings(SQLModel, table=True):
     # Per-driver override lives on the User model.
     require_pickup_location_global: bool = Field(default=True)
 
+    # 5) Whether drivers are allowed to see the history page.
+    # If False, only admins will see /history.
+    show_history_to_drivers: bool = Field(default=True)
+
     # 6) Minimal number of required photos per pickup
     min_required_photos: int = Field(default=1)
 

@@ -156,9 +156,15 @@
             class="slot-input"
           >
 
-          <small class="muted">
-            Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
-          </small>
+          {% if required_slots >= 1 %}
+            <small class="muted">
+              Required. Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% else %}
+            <small class="muted">
+              Optional. If you attach a photo, it counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% endif %}
         </label>
 
         <div class="slot-preview" id="preview1" aria-live="polite"></div>
@@ -193,7 +199,15 @@
             class="slot-input"
           >
 
-          <small class="muted">Optional.</small>
+          {% if required_slots >= 2 %}
+            <small class="muted">
+              Required. Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% else %}
+            <small class="muted">
+              Optional. If you attach a photo, it counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% endif %}
         </label>
 
         <div class="slot-preview" id="preview2" aria-live="polite"></div>
@@ -228,7 +242,15 @@
             class="slot-input"
           >
 
-          <small class="muted">Optional.</small>
+          {% if required_slots >= 3 %}
+            <small class="muted">
+              Required. Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% else %}
+            <small class="muted">
+              Optional. If you attach a photo, it counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% endif %}
         </label>
 
         <div class="slot-preview" id="preview3" aria-live="polite"></div>
@@ -263,11 +285,35 @@
             class="slot-input"
           >
 
-          <small class="muted">Optional.</small>
+          {% if required_slots >= 4 %}
+            <small class="muted">
+              Required. Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% else %}
+            <small class="muted">
+              Optional. If you attach a photo, it counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            </small>
+          {% endif %}
         </label>
 
         <div class="slot-preview" id="preview4" aria-live="polite"></div>
       </div>
+    </div>
+
+    {# ------------------ Optional driver comment ------------------ #}
+    <div class="form-group full-width">
+      <label class="form-label">
+        Comment (optional)
+        <textarea
+          name="comment"
+          class="form-input"
+          rows="3"
+          placeholder="Add any notes about this pickup (optional)"
+        ></textarea>
+      </label>
+      <small class="muted">
+        This comment will be visible only for Admins.
+      </small>
     </div>
 
     <div class="form-actions pickup-submit-row">

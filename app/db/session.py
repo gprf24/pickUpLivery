@@ -1,5 +1,4 @@
 # app/db/session.py
-
 from __future__ import annotations
 
 from typing import Generator
@@ -71,6 +70,7 @@ def init_db() -> None:
             id=1,
             allowed_pickups_per_day=3,
             require_pickup_location_global=True,
+            show_history_to_drivers=True,  # NEW flag defaults to True
             min_required_photos=1,
             photo_source_mode="camera_or_upload",
         )

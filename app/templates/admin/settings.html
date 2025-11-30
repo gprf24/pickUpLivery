@@ -48,6 +48,24 @@
 
     <div class="setting-divider"></div>
 
+    <label class="form-label checkbox-inline">
+      <input
+        type="checkbox"
+        name="show_history_to_drivers"
+        value="1"
+        {% if settings.show_history_to_drivers %}checked{% endif %}
+      >
+      <div class="checkbox-text">
+        <span class="checkbox-title">Allow drivers to see history page</span>
+        <small class="muted">
+          If disabled, only admins will be able to open the history page.
+          Drivers will receive a 403 error when trying to access it.
+        </small>
+      </div>
+    </label>
+
+    <div class="setting-divider"></div>
+
     <label class="form-label">
       Minimal required photos per pickup
       <input

@@ -31,12 +31,34 @@
     {# ===== Inline SVG sprite: MUST be inside <body>, before we call icon() ===== #}
     {% include 'partials/icons-sprite.html' %}
 
+    {# ===================== SHOULD WE SHOW HISTORY? ===================== #}
+    {# 
+       Rules:
+       - Admins ALWAYS see History.
+       - Drivers see History ONLY if settings.show_history_to_drivers is True.
+       - If settings not provided → driver по умолчанию НЕ видит history.
+    #}
+    {% set show_history = false %}
+    {% if user %}
+      {% if user.role == 'admin' %}
+        {% set show_history = true %}
+      {% elif settings is defined and settings.show_history_to_drivers %}
+        {% set show_history = true %}
+      {% endif %}
+    {% endif %}
+
     {# ===================== ROLE-AWARE HOME URL ===================== #}
     {% set home_url = '/login' %}
     {% if user %}
       {% if user.role == 'admin' %}
-        {% set home_url = '/history' %}
+        {# Если у админа по какой-то причине выключена history — отправляем на tasks #}
+        {% if show_history %}
+          {% set home_url = '/history' %}
+        {% else %}
+          {% set home_url = '/tasks' %}
+        {% endif %}
       {% else %}
+        {# Drivers always go home to tasks #}
         {% set home_url = '/tasks' %}
       {% endif %}
     {% endif %}
@@ -62,13 +84,15 @@
 
           <hr class="sidebar-divider" />
 
-          <!-- History -->
-          <a href="/history"
-            class="sidebar-link has-tooltip
-                   {% if request.url.path.startswith('/history') %}is-active{% endif %}"
-            data-tooltip="History">
-            <span class="sidebar-icon">{{ icon('history') }}</span>
-          </a>
+          <!-- History (only if allowed) -->
+          {% if show_history %}
+            <a href="/history"
+              class="sidebar-link has-tooltip
+                     {% if request.url.path.startswith('/history') %}is-active{% endif %}"
+              data-tooltip="History">
+              <span class="sidebar-icon">{{ icon('history') }}</span>
+            </a>
+          {% endif %}
 
           {% if user and user.role == 'admin' %}
             <hr class="sidebar-divider" />
@@ -150,11 +174,13 @@
                 {{ icon('tasks', 'icon-inline') }} Tasks
               </a>
 
-              <a href="/history"
-                class="mobile-link
-                       {% if request.url.path.startswith('/history') %}is-active{% endif %}">
-                {{ icon('history', 'icon-inline') }} History
-              </a>
+              {% if show_history %}
+                <a href="/history"
+                  class="mobile-link
+                         {% if request.url.path.startswith('/history') %}is-active{% endif %}">
+                  {{ icon('history', 'icon-inline') }} History
+                </a>
+              {% endif %}
 
               {% if user and user.role == 'admin' %}
                 <a href="/admin"

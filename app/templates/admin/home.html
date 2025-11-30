@@ -16,7 +16,11 @@
 
   <!--======= STATISTICS =======-->
   <details class="g-section" data-section-id="admin-stats" open>
-    <summary><h2>📊 Statistics</h2></summary>
+    <summary>
+      <h2>
+        📊 Statistics
+      </h2>
+    </summary>
     <ul class="g-badges">
       <li class="badge">Users: {{ stats.counts.users or 0 }}</li>
       <li class="badge">Regions: {{ stats.counts.regions or 0 }}</li>
@@ -30,7 +34,9 @@
 
   <!--======= USERS =======-->
   <details class="g-section" data-section-id="admin-users">
-    <summary><h2>👤 Users</h2></summary>
+    <summary>
+      <h2>👤 Users ({{ stats.counts.users or 0 }})</h2>
+    </summary>
 
     <!-- Create user (full reload is OK here) -->
     <div class="g-card">
@@ -161,7 +167,9 @@
 
   <!--======= REGIONS =======-->
   <details class="g-section" data-section-id="admin-regions">
-    <summary><h2>🗺️ Regions</h2></summary>
+    <summary>
+      <h2>🗺️ Regions ({{ stats.counts.regions or 0 }})</h2>
+    </summary>
     <div class="g-card">
       <h3 class="g-subtitle">Create region</h3>
       <!-- Create region (full reload is OK) -->
@@ -210,7 +218,9 @@
 
   <!--======= PHARMACIES =======-->
   <details class="g-section" data-section-id="admin-pharmacies">
-    <summary><h2>🏥 Pharmacies</h2></summary>
+    <summary>
+      <h2>🏥 Pharmacies ({{ stats.counts.pharmacies or 0 }})</h2>
+    </summary>
 
     <div class="g-card">
       <h3 class="g-subtitle">Create pharmacy</h3>

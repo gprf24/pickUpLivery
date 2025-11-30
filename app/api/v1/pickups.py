@@ -35,28 +35,19 @@ router = APIRouter()
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
-def _parse_float_or_none(s: Optional[str]) -> Optional[float]:
-    """Convert string to float or None."""
-    if s in (None, "", "null", "undefined"):
-        return None
-    try:
-        return float(s)
-    except Exception:
-        return None
-
-
 def _ensure_user_can_access_pharmacy(
     session: Session,
     user: User,
     pharmacy: Pharmacy,
 ) -> None:
     """
-    Ensure that the given user is allowed to access this pharmacy.
+    Raise HTTP 403 if the given user is not allowed to access the given pharmacy.
 
-    - Admins can access all pharmacies.
-    - Drivers must be linked via UserPharmacyLink.
+    Rules:
+      - Admins can access all pharmacies.
+      - Drivers must have a UserPharmacyLink entry for this pharmacy.
     """
-    if getattr(user, "role", None) == "admin":
+    if user.role == "admin":
         return
 
     link_exists = (
@@ -78,20 +69,31 @@ def _ensure_user_can_access_pharmacy(
 
 def _get_utc_today_bounds() -> Tuple[datetime, datetime]:
     """
-    Return the UTC datetime range [start_of_today, end_of_today].
+    Return (start_utc, end_utc) for the current day in UTC.
 
-    This is used to enforce the "N pickups per (driver, pharmacy) per day" limit.
+    Used to enforce "N pickups per (driver, pharmacy) per day" limit.
     """
-    today_utc = datetime.now(timezone.utc).date()
-    start = datetime.combine(today_utc, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(today_utc, time.max, tzinfo=timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    start = datetime.combine(now_utc.date(), time.min).replace(tzinfo=timezone.utc)
+    end = datetime.combine(now_utc.date(), time.max).replace(tzinfo=timezone.utc)
     return start, end
 
 
-def _resolve_require_location(user: User, settings: AppSettings) -> bool:
-    """
-    Combine per-user and global GPS requirement:
+def _parse_float_or_none(val: Optional[str]) -> Optional[float]:
+    """Convert string to float or return None on empty/invalid."""
+    if val is None or val == "":
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
+
+def _resolve_gps_requirement(user: User, settings: AppSettings) -> bool:
+    """
+    Decide whether a pickup must include GPS coordinates.
+
+    Logic:
     - If user.require_pickup_location is not None → use it.
     - Otherwise → fall back to settings.require_pickup_location_global.
     """
@@ -126,7 +128,7 @@ def pickup_form(
 
     _ensure_user_can_access_pharmacy(session, user, pharmacy)
 
-    require_location = _resolve_require_location(user, settings)
+    require_location = _resolve_gps_requirement(user, settings)
 
     return templates.TemplateResponse(
         "pickup.html",
@@ -134,7 +136,6 @@ def pickup_form(
             "request": request,
             "pharmacy": pharmacy,
             "user": user,
-            "error": None,
             "require_location": require_location,
             "photo_source_mode": settings.photo_source_mode,
             "min_required_photos": settings.min_required_photos,
@@ -155,6 +156,7 @@ async def create_pickup(
     image4: Optional[UploadFile] = File(None),
     lat: Optional[str] = Form(None),
     lon: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     settings: AppSettings = Depends(get_app_settings),
@@ -178,25 +180,32 @@ async def create_pickup(
 
     _ensure_user_can_access_pharmacy(session, user, pharmacy)
 
-    require_location = _resolve_require_location(user, settings)
+    require_location = _resolve_gps_requirement(user, settings)
 
-    # Collect only files that actually have content (filename not empty)
-    provided: List[tuple[int, UploadFile]] = []
-    for idx, uf in enumerate((image1, image2, image3, image4), start=1):
-        if uf and uf.filename:
-            provided.append((idx, uf))
+    # Collect provided files into a list for easier processing
+    provided: List[Tuple[int, UploadFile]] = []
+    if image1 is not None:
+        provided.append((1, image1))
+    if image2 is not None:
+        provided.append((2, image2))
+    if image3 is not None:
+        provided.append((3, image3))
+    if image4 is not None:
+        provided.append((4, image4))
+
+    # Filter out "empty" filenames (browsers may send empty file objects)
+    provided = [(idx, uf) for idx, uf in provided if uf.filename]
 
     # Enforce minimal number of photos
     min_photos = max(0, settings.min_required_photos or 0)
-    if len(provided) < max(1, min_photos):
-        # Render form again with a user-friendly error
+    if len(provided) < min_photos:
         return templates.TemplateResponse(
             "pickup.html",
             {
                 "request": request,
                 "pharmacy": pharmacy,
                 "user": user,
-                "error": f"At least {max(1, min_photos)} photo(s) are required.",
+                "error": f"At least {min_photos} photo(s) are required.",
                 "require_location": require_location,
                 "photo_source_mode": settings.photo_source_mode,
                 "min_required_photos": settings.min_required_photos,
@@ -206,6 +215,7 @@ async def create_pickup(
 
     latitude = _parse_float_or_none(lat)
     longitude = _parse_float_or_none(lon)
+    comment_clean = comment.strip() if comment else None
 
     # Enforce location requirement if flag is enabled
     if require_location and (latitude is None or longitude is None):
@@ -228,20 +238,31 @@ async def create_pickup(
     start_utc, end_utc = _get_utc_today_bounds()
 
     count_stmt = sa_select(func.count(Pickup.id)).where(
-        Pickup.pharmacy_id == pharmacy.id,
         Pickup.user_id == user.id,
+        Pickup.pharmacy_id == pharmacy.id,
         Pickup.created_at >= start_utc,
         Pickup.created_at <= end_utc,
     )
-    existing_count = session.exec(count_stmt).scalar_one() or 0
 
-    if existing_count >= limit:
-        raise HTTPException(
+    # FIX: get scalar integer instead of Row/tuple
+    current_count = session.exec(count_stmt).scalar_one()
+
+    if current_count >= limit:
+        return templates.TemplateResponse(
+            "pickup.html",
+            {
+                "request": request,
+                "pharmacy": pharmacy,
+                "user": user,
+                "error": (
+                    "Daily pickup limit reached for this pharmacy and driver. "
+                    f"Maximum {limit} pickups per day for this combination."
+                ),
+                "require_location": require_location,
+                "photo_source_mode": settings.photo_source_mode,
+                "min_required_photos": settings.min_required_photos,
+            },
             status_code=429,
-            detail=(
-                "Daily pickup limit reached for this pharmacy and driver. "
-                f"Maximum {limit} pickups per day for this combination."
-            ),
         )
 
     # Create the pickup entry first (note: internal pharmacy.id is used here)
@@ -250,6 +271,7 @@ async def create_pickup(
         pharmacy_id=pharmacy.id,
         latitude=latitude,
         longitude=longitude,
+        comment=comment_clean,
         status="done",
     )
     session.add(pickup)
@@ -274,18 +296,18 @@ async def create_pickup(
             # If compression fails, skip this file instead of breaking the whole pickup.
             continue
 
-        session.add(
-            PickupPhoto(
-                pickup_id=pickup.id,
-                idx=idx,
-                image_bytes=image_bytes,
-                image_content_type=content_type,
-                image_filename=uf.filename,
-            )
+        photo = PickupPhoto(
+            pickup_id=pickup.id,
+            idx=idx,
+            image_bytes=image_bytes,
+            image_content_type=content_type,
+            image_filename=uf.filename,
         )
+        session.add(photo)
         saved_count += 1
 
-    if saved_count == 0:
+    if saved_count == 0 and min_photos > 0:
+        # No valid photos were saved but some were required
         session.rollback()
         return templates.TemplateResponse(
             "pickup.html",
@@ -293,7 +315,7 @@ async def create_pickup(
                 "request": request,
                 "pharmacy": pharmacy,
                 "user": user,
-                "error": "All uploaded photos were empty or invalid.",
+                "error": "None of the uploaded photos could be processed.",
                 "require_location": require_location,
                 "photo_source_mode": settings.photo_source_mode,
                 "min_required_photos": settings.min_required_photos,
@@ -303,6 +325,7 @@ async def create_pickup(
 
     session.commit()
 
+    # Re-render the same template with a success message
     return templates.TemplateResponse(
         "pickup.html",
         {
@@ -311,8 +334,8 @@ async def create_pickup(
             "user": user,
             "message": (
                 f"Pickup saved with {saved_count} photo(s). "
-                f"Used {existing_count + 1}/{limit} pickups for today "
-                "for this pharmacy & driver."
+                f"Used {current_count + 1}/{limit} pickups for today "
+                f"for pharmacy “{pharmacy.name}”."
             ),
             "require_location": require_location,
             "photo_source_mode": settings.photo_source_mode,
@@ -322,9 +345,9 @@ async def create_pickup(
 
 
 # ---------------------------------------------------------------------
-# GET: photo by public_id
+# GET: individual photo by public_id (secure URL)
 # ---------------------------------------------------------------------
-@router.get("/photos/{photo_id}")
+@router.get("/pickup/photos/{photo_id}")
 def get_pickup_photo(
     photo_id: str,
     session: Session = Depends(get_session),

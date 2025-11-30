@@ -58,11 +58,7 @@
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
   padding: 10px;
-  background: radial-gradient(
-    circle at top left,
-    rgba(91, 113, 239, 0.18),
-    transparent 55%
-  );
+  background: color-mix(in srgb, var(--brand) 25%, transparent);
 }
 
 /* clickable wrapper for file input */
@@ -104,7 +100,7 @@
   gap: .55rem;
   padding: .45rem .6rem;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--brandred) 10%, transparent);
   border: 1px dashed rgba(255, 255, 255, 0.15);
   transition: border-color .15s ease, background .15s ease, transform .05s ease;
 }
@@ -145,7 +141,7 @@
 }
 
 /* help text inside label */
-.slot-label > small {
+.slot-label>small {
   display: block;
   margin-top: .35rem;
 }
@@ -213,11 +209,25 @@
     grid-template-columns: 1fr;
   }
 
+  /* Location row: красивый layout на мобиле */
   .pickup-location-row {
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  /* Кнопка "Use current location" — на всю ширину первой строки */
+  .pickup-location-row #btnLocate {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
   }
 
   .form-label.inline-label {
-    flex: 1 1 45%;
+    margin: 0;
+    min-width: 0;
+    flex: initial;
+    /* убираем flex, чтобы grid управлял шириной */
   }
 }

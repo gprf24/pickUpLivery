@@ -16,7 +16,8 @@ from app.api.v1.health import router as health_router
 from app.api.v1.pages import router as pages_router
 from app.api.v1.pickups import router as pickups_router
 from app.core.deps import templates
-from app.db.session import init_db
+from app.db.migrations import run_minimal_migrations
+from app.db.session import get_engine, init_db
 
 # -----------------------------------------------------------------------------
 # Logging: make sure we see clear startup errors in the console
@@ -60,28 +61,31 @@ app.include_router(auth_router, include_in_schema=False)
 
 
 # -----------------------------------------------------------------------------
-# Startup: create tables if missing (non-destructive)
+# Startup: create tables if missing (non-destructive) + minimal migrations
 # -----------------------------------------------------------------------------
 @app.on_event("startup")
 def _startup() -> None:
     """
-    On startup, ensure that all SQLModel tables exist.
+    On startup, ensure that all SQLModel tables exist and run minimal migrations.
 
-    This is NON-destructive:
-    - It will create missing tables.
-    - It will NOT drop or alter existing tables.
+    - init_db() calls SQLModel.metadata.create_all(engine):
+        * creates missing tables,
+        * does NOT drop or alter existing tables.
+    - run_minimal_migrations(engine) then adds new columns on existing tables
+      in an idempotent way (ADD COLUMN IF NOT EXISTS, etc.).
 
-    For a full reset + demo data in development, use:
-        from app.db.init_db import reset_and_seed_db
-        reset_and_seed_db()
-    as a one-off manual action (e.g. from a Python shell).
+    This combination:
+      * works for fresh databases (tables created with all current columns),
+      * and for existing databases (missing columns are added via migrations).
     """
     try:
+        engine = get_engine()
         init_db()
-        log.info("DB init completed (create_all for SQLModel metadata).")
+        run_minimal_migrations(engine)
+        log.info("DB init + minimal migrations completed.")
     except Exception as e:
         # Never crash the app on init errors — log and allow /ping to work.
-        log.exception("DB init failed: %s", e)
+        log.exception("DB init or migrations failed: %s", e)
 
 
 # -----------------------------------------------------------------------------

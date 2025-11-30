@@ -2,29 +2,79 @@
 from __future__ import annotations
 
 """
-Minimal migrations module (no-op).
+Minimal migrations module.
 
-Previously this file contained ALTER TABLE statements for legacy
-tables named with a "PP_" prefix (PP_pickup, PP_pharmacy, ...).
+This module contains small, idempotent migrations that are safe to run on
+every application startup.
 
-After performing a full clean reset of the database and switching to
-the new SQLModel-based schema (tables: users, regions, pharmacies,
-pickups, pickup_photos, user_pharmacy_links, app_settings, ...),
-those migrations are no longer needed.
-
-We keep this module only to avoid import errors and to have a place
-for future small, idempotent migrations if necessary.
+Current responsibilities:
+- Ensure new columns exist on already-created tables:
+  - pickups.comment                  (TEXT, nullable)
+  - app_settings.show_history_to_drivers (BOOLEAN NOT NULL DEFAULT TRUE)
 """
 
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 
 def run_minimal_migrations(engine: Engine) -> None:
     """
-    No-op placeholder.
+    Run small idempotent migrations for already-created tables.
 
-    You can safely remove the call to this from app/main.py.
-    If you later need to add a tiny idempotent migration
-    (for already-created tables), you can implement it here.
+    Safe to call multiple times. If a column already exists, the statements
+    will either be no-ops (ADD COLUMN IF NOT EXISTS) or simply re-apply
+    DEFAULT/NOT NULL constraints.
     """
-    return
+    with engine.connect() as conn:
+        # 1) Add comment column to pickups table (nullable TEXT)
+        conn.execute(
+            text(
+                """
+                ALTER TABLE pickups
+                ADD COLUMN IF NOT EXISTS comment TEXT;
+                """
+            )
+        )
+
+        # 2) Add show_history_to_drivers to app_settings
+        #    - ensure column exists
+        #    - set DEFAULT TRUE
+        #    - fill NULLs with TRUE
+        #    - enforce NOT NULL
+        conn.execute(
+            text(
+                """
+                ALTER TABLE app_settings
+                ADD COLUMN IF NOT EXISTS show_history_to_drivers BOOLEAN;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE app_settings
+                ALTER COLUMN show_history_to_drivers
+                SET DEFAULT TRUE;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE app_settings
+                SET show_history_to_drivers = TRUE
+                WHERE show_history_to_drivers IS NULL;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE app_settings
+                ALTER COLUMN show_history_to_drivers
+                SET NOT NULL;
+                """
+            )
+        )
+
+        conn.commit()

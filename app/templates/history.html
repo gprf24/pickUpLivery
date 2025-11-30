@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}History · PickUp Livery{% endblock %}
+
 {% block content %}
 
 <section class="page-hero">
@@ -8,208 +9,267 @@
 </section>
 
 {% if user.role == "admin" %}
-  <!-- ===================== FILTER BAR ===================== -->
-  <section class="card filter-bar">
+  <!-- ===================== FILTER + EXPORT ROW ===================== -->
+  <section class="filter-export-row">
 
-    <form method="get" action="/history" class="filter-chips-layout" id="historyFilters">
+    <!-- ===================== FILTER BAR ===================== -->
+    <section class="card filter-bar">
+      <form method="get" action="/history" class="filter-chips-layout" id="historyFilters">
 
-      <!-- Hidden quick_range for presets -->
-      <input type="hidden" name="quick_range" id="quickRangeInput"
-             value="{{ active_filters.quick_range or '' }}">
+        <!-- Hidden quick_range for presets -->
+        <input type="hidden" name="quick_range" id="quickRangeInput"
+               value="{{ active_filters.quick_range or '' }}">
 
-      <!-- Left: simple counter -->
-      <div class="filter-counter">
-        Pickups:
-        <span class="filter-counter-number">
-          {{ groups|length or 0 }}
-        </span>
-      </div>
-
-      <!-- ========= DATE CHIP + POPOVER ========= -->
-      <div class="chip-wrapper">
-        {% set df = active_filters.date_from %}
-        {% set dt = active_filters.date_to %}
-
-        <!-- Chip that shows the currently selected range -->
-        <button type="button" class="chip chip-date" id="dateChip">
-          <span class="chip-main-text">
-            {% if df or dt %}
-              {{ df or '...' }} – {{ dt or '...' }}
-            {% else %}
-              Select period
-            {% endif %}
+        <!-- Left: simple counter -->
+        <div class="filter-counter">
+          Days:
+          <span class="filter-counter-number">
+            {{ groups|length or 0 }}
           </span>
-          {% if df or dt %}
-            <span class="chip-clear-icon" id="clearDatesIcon">×</span>
-          {% endif %}
-          <span class="chip-caret"></span>
-        </button>
+        </div>
 
-        <!-- Popover with presets + calendar -->
-        <div class="date-popover" id="datePopover">
-          <div class="date-popover-panel">
-            <div class="date-popover-grid">
+        <!-- ========= DATE CHIP + POPOVER ========= -->
+        <div class="chip-wrapper">
+          {% set df = active_filters.date_from %}
+          {% set dt = active_filters.date_to %}
 
-              <!-- Presets column -->
-              <div class="date-presets">
-                <button type="button"
-                        class="quick-btn {% if active_filters.quick_range=='today' %}is-active{% endif %}"
-                        data-range="today">Today</button>
+          <!-- Chip that shows the currently selected range -->
+          <button type="button" class="chip chip-date" id="dateChip">
+            <span class="chip-main-text">
+              {% if df or dt %}
+                {{ df or '...' }} – {{ dt or '...' }}
+              {% else %}
+                Select period
+              {% endif %}
+            </span>
+            {% if df or dt %}
+              <span class="chip-clear-icon" id="clearDatesIcon">×</span>
+            {% endif %}
+            <span class="chip-caret"></span>
+          </button>
 
-                <button type="button"
-                        class="quick-btn {% if active_filters.quick_range=='yesterday' %}is-active{% endif %}"
-                        data-range="yesterday">Yesterday</button>
+          <!-- Popover with presets + calendar -->
+          <div class="date-popover" id="datePopover">
+            <div class="date-popover-panel">
+              <div class="date-popover-grid">
 
-                <button type="button"
-                        class="quick-btn {% if active_filters.quick_range=='this_week' %}is-active{% endif %}"
-                        data-range="this_week">This week</button>
+                <!-- Presets column -->
+                <div class="date-presets">
+                  <button type="button"
+                          class="quick-btn {% if active_filters.quick_range=='today' %}is-active{% endif %}"
+                          data-range="today">Today</button>
 
-                <button type="button"
-                        class="quick-btn {% if active_filters.quick_range=='last_week' %}is-active{% endif %}"
-                        data-range="last_week">Last week</button>
+                  <button type="button"
+                          class="quick-btn {% if active_filters.quick_range=='yesterday' %}is-active{% endif %}"
+                          data-range="yesterday">Yesterday</button>
+
+                  <button type="button"
+                          class="quick-btn {% if active_filters.quick_range=='this_week' %}is-active{% endif %}"
+                          data-range="this_week">This week</button>
+
+                  <button type="button"
+                          class="quick-btn {% if active_filters.quick_range=='last_week' %}is-active{% endif %}"
+                          data-range="last_week">Last week</button>
+                </div>
+
+                <!-- Date inputs -->
+                <div class="date-inputs">
+                  <label class="date-input-label">
+                    From
+                    <input type="date"
+                           name="date_from"
+                           value="{{ active_filters.date_from }}"
+                           class="date-input js-filter-auto">
+                  </label>
+
+                  <label class="date-input-label">
+                    To
+                    <input type="date"
+                           name="date_to"
+                           value="{{ active_filters.date_to }}"
+                           class="date-input js-filter-auto">
+                  </label>
+
+                  <button type="button" class="btn-xs btn-ghost" id="clearDatesBtn">
+                    Reset
+                  </button>
+                </div>
+
               </div>
-
-              <!-- Date inputs -->
-              <div class="date-inputs">
-                <label class="date-input-label">
-                  From
-                  <input type="date"
-                         name="date_from"
-                         value="{{ active_filters.date_from }}"
-                         class="date-input js-filter-auto">
-                </label>
-
-                <label class="date-input-label">
-                  To
-                  <input type="date"
-                         name="date_to"
-                         value="{{ active_filters.date_to }}"
-                         class="date-input js-filter-auto">
-                </label>
-
-                <button type="button" class="btn-xs btn-ghost" id="clearDatesBtn">
-                  Reset
-                </button>
-              </div>
-
             </div>
           </div>
         </div>
-      </div>
 
-      {# ========= REGION DROPDOWN CHIP ========= #}
-      {% set ns_region = namespace(label='') %}
-      {% if active_filters.region_id %}
-        {% for r in regions %}
-          {% if r.id == active_filters.region_id|int %}
-            {% set ns_region.label = r.name %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-      <div class="chip-dropdown-wrapper" data-filter="region">
-        <button type="button" class="chip chip-dropdown">
-          <span class="chip-main-text">
-            {{ ns_region.label or 'Region' }}
-          </span>
-          {% if ns_region.label %}
-            <span class="chip-clear-icon">×</span>
-          {% endif %}
-          <span class="chip-caret"></span>
-        </button>
-        <div class="dropdown-menu">
-          <button type="button"
-                  class="dropdown-item {% if not active_filters.region_id %}is-active{% endif %}"
-                  data-value="">
-            All regions
-          </button>
+        {# ========= REGION DROPDOWN CHIP ========= #}
+        {% set ns_region = namespace(label='') %}
+        {% if active_filters.region_id %}
           {% for r in regions %}
-            <button type="button"
-                    class="dropdown-item {% if active_filters.region_id and r.id == active_filters.region_id|int %}is-active{% endif %}"
-                    data-value="{{ r.id }}">
-              {{ r.name }}
-            </button>
+            {% if r.id == active_filters.region_id|int %}
+              {% set ns_region.label = r.name %}
+            {% endif %}
           {% endfor %}
-        </div>
-        <input type="hidden" name="region_id" value="{{ active_filters.region_id }}">
-      </div>
-
-      {# ========= PHARMACY DROPDOWN CHIP ========= #}
-      {% set ns_pharmacy = namespace(label='') %}
-      {% if active_filters.pharmacy_id %}
-        {% for p in pharmacies %}
-          {% if p.id == active_filters.pharmacy_id|int %}
-            {% set ns_pharmacy.label = p.name %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-      <div class="chip-dropdown-wrapper" data-filter="pharmacy">
-        <button type="button" class="chip chip-dropdown">
-          <span class="chip-main-text">
-            {{ ns_pharmacy.label or 'Pharmacy' }}
-          </span>
-          {% if ns_pharmacy.label %}
-            <span class="chip-clear-icon">×</span>
-          {% endif %}
-          <span class="chip-caret"></span>
-        </button>
-        <div class="dropdown-menu">
-          <button type="button"
-                  class="dropdown-item {% if not active_filters.pharmacy_id %}is-active{% endif %}"
-                  data-value="">
-            All pharmacies
+        {% endif %}
+        <div class="chip-dropdown-wrapper" data-filter="region">
+          <button type="button" class="chip chip-dropdown">
+            <span class="chip-main-text">
+              {{ ns_region.label or 'Region' }}
+            </span>
+            {% if ns_region.label %}
+              <span class="chip-clear-icon">×</span>
+            {% endif %}
+            <span class="chip-caret"></span>
           </button>
+          <div class="dropdown-menu">
+            <button type="button"
+                    class="dropdown-item {% if not active_filters.region_id %}is-active{% endif %}"
+                    data-value="">
+              All regions
+            </button>
+            {% for r in regions %}
+              <button type="button"
+                      class="dropdown-item {% if active_filters.region_id and r.id == active_filters.region_id|int %}is-active{% endif %}"
+                      data-value="{{ r.id }}">
+                {{ r.name }}
+              </button>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="region_id" value="{{ active_filters.region_id }}">
+        </div>
+
+        {# ========= PHARMACY DROPDOWN CHIP ========= #}
+        {% set ns_pharmacy = namespace(label='') %}
+        {% if active_filters.pharmacy_id %}
           {% for p in pharmacies %}
-            <button type="button"
-                    class="dropdown-item {% if active_filters.pharmacy_id and p.id == active_filters.pharmacy_id|int %}is-active{% endif %}"
-                    data-value="{{ p.id }}">
-              {{ p.name }}
-            </button>
+            {% if p.id == active_filters.pharmacy_id|int %}
+              {% set ns_pharmacy.label = p.name %}
+            {% endif %}
           {% endfor %}
-        </div>
-        <input type="hidden" name="pharmacy_id" value="{{ active_filters.pharmacy_id }}">
-      </div>
-
-      {# ========= DRIVER DROPDOWN CHIP ========= #}
-      {% set ns_driver = namespace(label='') %}
-      {% if active_filters.driver_id %}
-        {% for u in users %}
-          {% if u.id == active_filters.driver_id|int %}
-            {% set ns_driver.label = u.full_name or u.login %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
-      <div class="chip-dropdown-wrapper" data-filter="driver">
-        <button type="button" class="chip chip-dropdown">
-          <span class="chip-main-text">
-            {{ ns_driver.label or 'Driver' }}
-          </span>
-          {% if ns_driver.label %}
-            <span class="chip-clear-icon">×</span>
-          {% endif %}
-          <span class="chip-caret"></span>
-        </button>
-        <div class="dropdown-menu">
-          <button type="button"
-                  class="dropdown-item {% if not active_filters.driver_id %}is-active{% endif %}"
-                  data-value="">
-            All drivers
+        {% endif %}
+        <div class="chip-dropdown-wrapper" data-filter="pharmacy">
+          <button type="button" class="chip chip-dropdown">
+            <span class="chip-main-text">
+              {{ ns_pharmacy.label or 'Pharmacy' }}
+            </span>
+            {% if ns_pharmacy.label %}
+              <span class="chip-clear-icon">×</span>
+            {% endif %}
+            <span class="chip-caret"></span>
           </button>
-          {% for u in users %}
+          <div class="dropdown-menu">
             <button type="button"
-                    class="dropdown-item {% if active_filters.driver_id and u.id == active_filters.driver_id|int %}is-active{% endif %}"
-                    data-value="{{ u.id }}">
-              {{ u.full_name or u.login }}
+                    class="dropdown-item {% if not active_filters.pharmacy_id %}is-active{% endif %}"
+                    data-value="">
+              All pharmacies
             </button>
-          {% endfor %}
+            {% for p in pharmacies %}
+              <button type="button"
+                      class="dropdown-item {% if active_filters.pharmacy_id and p.id == active_filters.pharmacy_id|int %}is-active{% endif %}"
+                      data-value="{{ p.id }}">
+                {{ p.name }}
+              </button>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="pharmacy_id" value="{{ active_filters.pharmacy_id }}">
         </div>
-        <input type="hidden" name="driver_id" value="{{ active_filters.driver_id }}">
-      </div>
 
-      <!-- ========= CLEAR ALL ========= -->
-      <div class="filter-actions">
-        <a href="/history" role="button" class="btn btn-secondary">Reset</a>
-      </div>
-    </form>
+        {# ========= DRIVER DROPDOWN CHIP ========= #}
+        {% set ns_driver = namespace(label='') %}
+        {% if active_filters.driver_id %}
+          {% for u in users %}
+            {% if u.id == active_filters.driver_id|int %}
+              {% set ns_driver.label = u.full_name or u.login %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        <div class="chip-dropdown-wrapper" data-filter="driver">
+          <button type="button" class="chip chip-dropdown">
+            <span class="chip-main-text">
+              {{ ns_driver.label or 'Driver' }}
+            </span>
+            {% if ns_driver.label %}
+              <span class="chip-clear-icon">×</span>
+            {% endif %}
+            <span class="chip-caret"></span>
+          </button>
+          <div class="dropdown-menu">
+            <button type="button"
+                    class="dropdown-item {% if not active_filters.driver_id %}is-active{% endif %}"
+                    data-value="">
+              All drivers
+            </button>
+            {% for u in users %}
+              <button type="button"
+                      class="dropdown-item {% if active_filters.driver_id and u.id == active_filters.driver_id|int %}is-active{% endif %}"
+                      data-value="{{ u.id }}">
+                {{ u.full_name or u.login }}
+              </button>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="driver_id" value="{{ active_filters.driver_id }}">
+        </div>
+
+        <!-- ========= CLEAR ALL ========= -->
+        <div class="filter-actions">
+          <a href="/history" role="button" class="btn btn-secondary">Reset</a>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===================== EXPORT CARD ===================== -->
+    <section class="card export-card">
+      <form method="get" action="/history/export" class="export-form">
+        {# Pass current filters so export matches visible list #}
+        <input type="hidden" name="region_id" value="{{ active_filters.region_id }}">
+        <input type="hidden" name="pharmacy_id" value="{{ active_filters.pharmacy_id }}">
+        <input type="hidden" name="driver_id" value="{{ active_filters.driver_id }}">
+        <input type="hidden" name="date_from" value="{{ active_filters.date_from }}">
+        <input type="hidden" name="date_to" value="{{ active_filters.date_to }}">
+        <input type="hidden" name="quick_range" value="{{ active_filters.quick_range }}">
+
+        {% set current_format = request.query_params.get('format', 'csv') %}
+
+        <div class="export-label">
+          <div class="export-title">Export</div>
+          <div class="export-sub">Current filtered list</div>
+        </div>
+
+        <!-- Chip-style dropdown for export format -->
+        <div class="chip-dropdown-wrapper export-format-wrapper">
+          <button type="button" class="chip chip-dropdown chip-export" id="exportFormatChip">
+            <span class="chip-main-text">
+              {% if current_format == 'xlsx' %}
+                Excel (.xlsx)
+              {% else %}
+                CSV
+              {% endif %}
+            </span>
+            <span class="chip-caret"></span>
+          </button>
+
+          <div class="dropdown-menu">
+            <button type="button"
+                    class="dropdown-item {% if current_format != 'xlsx' %}is-active{% endif %}"
+                    data-value="csv">
+              CSV
+            </button>
+            <button type="button"
+                    class="dropdown-item {% if current_format == 'xlsx' %}is-active{% endif %}"
+                    data-value="xlsx">
+              Excel (.xlsx)
+            </button>
+          </div>
+
+          <input type="hidden" name="format" value="{{ current_format }}">
+        </div>
+
+        <div class="export-actions">
+          <button type="submit" class="btn btn-secondary btn-export">
+            Download
+          </button>
+        </div>
+      </form>
+    </section>
+
   </section>
 {% endif %}
 
@@ -228,16 +288,16 @@
 
 {% if groups and groups|length %}
   <section class="card history-card">
-    <div class="h-legend muted">Click a row to see photos, GPS & metadata.</div>
+    <div class="h-legend muted">Click a row to see photos, GPS, comment & metadata.</div>
 
-    {% for g in groups %}
-      {% set items = g["items"] %}
+    {# groups: dict[day_str] -> list of (pickup, pharmacy, user) #}
+    {% for day, items in groups.items() %}
       {% set count = items|length %}
 
       <div class="history-day">
         <div class="history-day-header">
           <div class="history-day-main">
-            <h3 class="history-day-title">{{ g.day.strftime('%Y-%m-%d') }}</h3>
+            <h3 class="history-day-title">{{ day }}</h3>
             <span class="pill">
               {{ count }}
               {% if count == 1 %}item{% else %}items{% endif %}
@@ -288,7 +348,7 @@
                     {% if photo_qty > 0 %}
                       {{ photo_qty }} {% if photo_qty == 1 %}photo{% else %}photos{% endif %}
                     {% else %}
-                      — 
+                      —
                     {% endif %}
                   </span>
 
@@ -314,18 +374,13 @@
                     <h4>Photos</h4>
                     {% if photo_qty > 0 %}
                       <div class="photo-grid">
-                        {# 
-                          Each thumb:
-                          - shows image preview
-                          - stores the full list of pids for this pickup in data-pids
-                          - has data-index = index of this particular photo in that list
-                        #}
+                        {# Thumbnails – clicking opens lightbox #}
                         {% for pid in pids[:6] %}
                           <button type="button"
                                   class="photo-thumb"
                                   data-pids="{{ pids|join(',') }}"
                                   data-index="{{ loop.index0 }}">
-                            <img src="/photos/{{ pid }}" alt="pickup photo" loading="lazy">
+                            <img src="/pickup/photos/{{ pid }}" alt="pickup photo" loading="lazy">
                           </button>
                         {% endfor %}
                       </div>
@@ -353,12 +408,28 @@
                   <div class="history-detail-block">
                     <h4>Metadata</h4>
                     <dl class="meta-list">
-                      <div><dt>Status</dt><dd>{{ pickup.status }}</dd></div>
+                      <div>
+                        <dt>Status</dt>
+                        <dd>{{ pickup.status }}</dd>
+                      </div>
                       <div>
                         <dt>Created at (UTC)</dt>
                         <dd>{{ pickup.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
                       </div>
-                      <div><dt>Pickup ID</dt><dd>{{ pickup.id }}</dd></div>
+                      <div>
+                        <dt>Pickup ID</dt>
+                        <dd>{{ pickup.id }}</dd>
+                      </div>
+                      <div>
+                        <dt>Comment</dt>
+                        <dd>
+                          {% if pickup.comment %}
+                            {{ pickup.comment }}
+                          {% else %}
+                            <span class="muted">No comment.</span>
+                          {% endif %}
+                        </dd>
+                      </div>
                     </dl>
                   </div>
 
@@ -387,7 +458,6 @@
     <div class="lightbox-counter" id="lightboxCounter"></div>
   </div>
 </div>
-
 
 {% endblock %}
 
@@ -567,7 +637,7 @@
   function updateImage() {
     if (!currentList.length) return;
     const pid = currentList[currentIndex];
-    img.src = "/photos/" + pid;
+    img.src = "/pickup/photos/" + pid;
     if (counterNode) {
       counterNode.textContent = (currentIndex + 1) + " / " + currentList.length;
     }
@@ -641,6 +711,51 @@
       const idx = parseInt(indexStr, 10) || 0;
       openLightbox(list, idx);
     });
+  });
+})();
+
+/* ========================= EXPORT FORMAT DROPDOWN ========================= */
+(function() {
+  const wrapper = document.querySelector(".export-format-wrapper");
+  if (!wrapper) return;
+
+  const chip = wrapper.querySelector(".chip-export");
+  const menu = wrapper.querySelector(".dropdown-menu");
+  const hiddenInput = wrapper.querySelector('input[name="format"]');
+  const labelNode = wrapper.querySelector(".chip-main-text");
+
+  if (!chip || !menu || !hiddenInput || !labelNode) return;
+
+  // Open / close on chip click
+  chip.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const isOpen = wrapper.classList.contains("is-open");
+    wrapper.classList.toggle("is-open", !isOpen);
+  });
+
+  // Click on option
+  menu.querySelectorAll(".dropdown-item").forEach(item => {
+    item.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const value = item.dataset.value || "csv";
+
+      hiddenInput.value = value;
+      labelNode.textContent = (value === "xlsx") ? "Excel (.xlsx)" : "CSV";
+
+      // Active state
+      menu.querySelectorAll(".dropdown-item").forEach(i => i.classList.remove("is-active"));
+      item.classList.add("is-active");
+
+      wrapper.classList.remove("is-open");
+      // No auto-submit – user clicks "Download"
+    });
+  });
+
+  // Close on outside click
+  document.addEventListener("click", (ev) => {
+    if (!wrapper.contains(ev.target)) {
+      wrapper.classList.remove("is-open");
+    }
   });
 })();
 </script>

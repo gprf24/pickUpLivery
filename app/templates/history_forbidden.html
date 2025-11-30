@@ -1,0 +1,23 @@
+{# templates/history_forbidden.html #}
+{% extends "base.html" %}
+{% block title %}Error 403 · History · PickUp Livery{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <h1 class="page-title">Error 403</h1>
+  <p class="lead">
+    History page is disabled for drivers.
+  </p>
+</section>
+
+<section class="card">
+  <p class="muted">
+    Your account does not have access to the pickup history page.
+    Please contact your administrator if you think this is a mistake.
+  </p>
+
+  <div style="margin-top: 12px;">
+    <a href="{{ home_url }}" class="btn btn-primary">Back to home</a>
+  </div>
+</section>
+{% endblock %}

@@ -22,9 +22,10 @@ dependencies = [
   "watchfiles>=0.21.0",
 
   "Pillow",
-  "argon2-cffi"
-]
+  "argon2-cffi",
 
+  "openpyxl>=3.1.0"
+]
 
 [tool.pytest.ini_options]
 pythonpath = "."

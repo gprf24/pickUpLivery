@@ -11,11 +11,14 @@ History page:
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+import csv
+import io
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import func, outerjoin
 from sqlalchemy import select as sa_select
 from sqlalchemy import text
@@ -23,7 +26,13 @@ from sqlmodel import Session
 from sqlmodel import select as sm_select
 
 # Core deps & Jinja templates
-from app.core.deps import get_current_user, get_session, require_admin, templates
+from app.core.deps import (
+    get_app_settings,
+    get_current_user,
+    get_session,
+    require_admin,
+    templates,
+)
 
 # DB models
 from app.db.models.links import UserPharmacyLink
@@ -31,6 +40,7 @@ from app.db.models.pharmacy import Pharmacy
 from app.db.models.pickup import Pickup
 from app.db.models.pickup_photo import PickupPhoto
 from app.db.models.region import Region
+from app.db.models.settings import AppSettings
 from app.db.models.user import User, UserRole
 
 router = APIRouter()
@@ -45,6 +55,17 @@ def _as_start_dt(d: date) -> datetime:
 def _as_end_dt(d: date) -> datetime:
     """Convert date → end of day (23:59:59.999...)."""
     return datetime.combine(d, time.max)
+
+
+# Timezone used for displaying pickup times in Germany
+TZ_DE = ZoneInfo("Europe/Berlin")
+
+
+def _utc_to_de(dt: datetime) -> datetime:
+    """Convert a UTC datetime (naive or aware) to Europe/Berlin."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(TZ_DE)
 
 
 def _parse_int(val: Optional[str]) -> Optional[int]:
@@ -102,7 +123,7 @@ def _compute_quick_range(
         return start, end
 
     if quick_range == "last_week":
-        # Previous week Monday–Sunday
+        # Last week (Mon-Sun) relative to current week
         this_monday = today - timedelta(days=today.weekday())
         end = this_monday - timedelta(days=1)
         start = end - timedelta(days=6)
@@ -120,114 +141,67 @@ def root_redirect(
     user: User = Depends(get_current_user),
 ):
     """
-    Default landing page by role:
-      - admin  → /history
-      - driver → /tasks
-
-    Note: if user is not authenticated, get_current_user will raise 401.
-    Your global exception handler should redirect 401 to /login.
+    Simple redirect to the main tasks page.
     """
-    if user.role == UserRole.admin:
-        return RedirectResponse(url="/history", status_code=303)
-    return RedirectResponse(url="/tasks", status_code=303)
+    return RedirectResponse(url="/tasks")
 
 
-# -------------------------- TASKS PAGE ------------------------------
+# ------------------------------ Tasks page ------------------------------
 @router.get("/tasks", response_class=HTMLResponse)
 def tasks_page(
     request: Request,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
 ):
     """
-    Driver landing page.
-    Loads pharmacies assigned to the current user (via user_pharmacy_links)
-    and exposes them under 'pharmacies' (what tasks.html expects).
+    Render tasks page: list of pharmacies assigned to the current user.
+
+    Both drivers and admins see only pharmacies they are explicitly assigned to
+    via UserPharmacyLink.
     """
-    links = session.exec(
-        sm_select(UserPharmacyLink.pharmacy_id).where(
-            UserPharmacyLink.user_id == user.id
+    # Join UserPharmacyLink → Pharmacy and filter by current user
+    stmt = (
+        sm_select(Pharmacy)
+        .join(UserPharmacyLink, UserPharmacyLink.pharmacy_id == Pharmacy.id)
+        .where(
+            UserPharmacyLink.user_id == user.id,
+            Pharmacy.is_active == True,  # noqa: E712
         )
-    ).all()
-    assigned_ids = list(links)  # already ints
-
-    pharmacies: List[Pharmacy] = []
-    region_by_id: Dict[int, Region] = {}
-    regions: List[Region] = []
-
-    if assigned_ids:
-        pharmacies = session.exec(
-            sm_select(Pharmacy)
-            .where(Pharmacy.id.in_(assigned_ids))  # type: ignore[arg-type]
-            .order_by(Pharmacy.name)
-        ).all()
-
-        region_ids = sorted(
-            {p.region_id for p in pharmacies if p.region_id is not None}
-        )
-        if region_ids:
-            regions = session.exec(
-                sm_select(Region).where(Region.id.in_(region_ids))  # type: ignore[arg-type]
-            ).all()
-            region_by_id = {r.id: r for r in regions}
+        .order_by(Pharmacy.name)
+    )
+    pharmacies = session.exec(stmt).all()
 
     return templates.TemplateResponse(
         "tasks.html",
         {
             "request": request,
             "user": user,
+            "settings": settings,
             "pharmacies": pharmacies,
-            "region_by_id": region_by_id,
-            "regions": regions,
-            "assigned_ids": assigned_ids,
         },
     )
 
 
-# -------------------------- PICKUP FORM (generic) -----------------------------
-@router.get("/pickup", response_class=HTMLResponse)
-def pickup_form(
-    request: Request,
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
-):
-    """
-    Generic pickup creation form (with pharmacy dropdown).
-    Note: you also have /pickup/{pharmacy_id} in app/api/v1/pickups.py.
-    """
-    pharmacies: List[Pharmacy] = session.exec(
-        sm_select(Pharmacy).order_by(Pharmacy.name)
-    ).all()
-    return templates.TemplateResponse(
-        "pickup.html",
-        {"request": request, "user": user, "pharmacies": pharmacies},
-    )
-
-
-# -------------------------- SUCCESS PAGE ----------------------------
-@router.get("/success", response_class=HTMLResponse)
-def success_page(
-    request: Request,
-    user: User = Depends(get_current_user),
-):
-    """Simple confirmation page after creating a pickup."""
-    return templates.TemplateResponse(
-        "success.html", {"request": request, "user": user}
-    )
-
-
+# -------------------------- Success redirect page --------------------------
 @router.get("/success/{pharmacy_id}", response_class=HTMLResponse)
-def pickup_success(
+def success_page(
     request: Request,
     pharmacy_id: int,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
 ):
     """Confirmation page variant that shows the selected pharmacy."""
     pharmacy = session.get(Pharmacy, pharmacy_id)
     return templates.TemplateResponse(
         "success.html",
-        {"request": request, "user": user, "pharmacy": pharmacy},
+        {
+            "request": request,
+            "user": user,
+            "settings": settings,
+            "pharmacy": pharmacy,
+        },
     )
 
 
@@ -237,13 +211,14 @@ def history_page(
     request: Request,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
     # Accept raw strings so empty strings won't cause 422
     region_id: Optional[str] = Query(None),
     pharmacy_id: Optional[str] = Query(None),
     driver_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    quick_range: Optional[str] = Query(None),  # <--- NEW
+    quick_range: Optional[str] = Query(None),  # <--- quick presets
 ):
     """
     Render pickup history.
@@ -254,10 +229,23 @@ def history_page(
       instead of predictable /pickup/{pickup_id}/photos/{idx} paths.
     - Access control:
         * Admins see all pickups (with filters).
-        * Non-admins see only their own pickups (Pickup.user_id == current user).
+        * Drivers see history only if settings.show_history_to_drivers is True;
+          otherwise a 403-style page is shown.
     - New: quick_range presets (today / yesterday / this_week / last_week / tomorrow).
       If quick_range is set and no manual dates are given, it will define date_from/date_to.
     """
+
+    # If history is disabled for drivers → render a dedicated 403 page
+    if user.role == UserRole.driver and not settings.show_history_to_drivers:
+        return templates.TemplateResponse(
+            "history_forbidden.html",
+            {
+                "request": request,
+                "user": user,
+                "settings": settings,
+            },
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
     # 1) Parse filters from raw query strings
     rid = _parse_int(region_id)
@@ -266,39 +254,29 @@ def history_page(
     dfrom = _parse_date(date_from)
     dto = _parse_date(date_to)
 
-    # 1a) Apply quick_range → date_from/date_to if user didn't specify dates manually
-    if not dfrom and not dto and quick_range:
-        qr_from, qr_to = _compute_quick_range(quick_range)
-        if qr_from:
-            dfrom = qr_from
-        if qr_to:
-            dto = qr_to
+    # Apply quick_range if dates not manually set
+    if quick_range and not (dfrom or dto):
+        q_from, q_to = _compute_quick_range(quick_range)
+        dfrom = dfrom or q_from
+        dto = dto or q_to
 
-    # Non-admin users are not allowed to query arbitrary driver_id
-    # They always see only their own pickups.
-    is_admin = getattr(user, "role", None) == "admin"
-    if not is_admin:
-        did = None  # ignore driver_id query param for non-admins
+    is_admin = user.role == UserRole.admin
 
-    # If user accidentally swapped dates, normalize them (from <= to)
-    if dfrom and dto and dfrom > dto:
-        dfrom, dto = dto, dfrom
-
-    # 2) Load selected objects for consistency warnings (region/pharmacy/driver mapping)
-    selected_region: Optional[Region] = session.get(Region, rid) if rid else None
-    selected_pharmacy: Optional[Pharmacy] = session.get(Pharmacy, pid) if pid else None
-    selected_driver: Optional[User] = session.get(User, did) if did else None
-
+    # 2) Additional warnings for inconsistent filters (optional)
     warnings: List[str] = []
 
-    # Region and pharmacy must be consistent
-    if selected_region and selected_pharmacy:
+    # Validate region / pharmacy / driver combinations
+    selected_region = session.get(Region, rid) if rid else None
+    selected_pharmacy = session.get(Pharmacy, pid) if pid else None
+    selected_driver = session.get(User, did) if did else None
+
+    if selected_pharmacy and selected_region:
         if selected_pharmacy.region_id != selected_region.id:
             warnings.append(
                 f"Pharmacy “{selected_pharmacy.name}” does not belong to region “{selected_region.name}”."
             )
 
-    # Driver must be linked to pharmacy (via UserPharmacyLink)
+    # Driver + pharmacy inconsistency
     if selected_driver and selected_pharmacy:
         link_exists = (
             session.exec(
@@ -321,7 +299,6 @@ def history_page(
                 UserPharmacyLink.user_id == selected_driver.id
             )
         ).all()
-        driver_pharmacy_ids = list(driver_pharmacy_ids)
         any_in_region = False
         if driver_pharmacy_ids:
             any_in_region = (
@@ -355,12 +332,7 @@ def history_page(
         .order_by(Pickup.created_at.desc())
     )
 
-    # 🔐 Access control on data level
-    if not is_admin:
-        # Non-admins always see only their own pickups, regardless of query params
-        stmt = stmt.where(Pickup.user_id == user.id)
-
-    # 4) Apply filters if they were parsed successfully
+    # 4) Apply filters to the query
     if rid:
         stmt = stmt.where(Region.id == rid)
     if pid:
@@ -373,10 +345,14 @@ def history_page(
     if dto:
         stmt = stmt.where(Pickup.created_at <= _as_end_dt(dto))
 
+    if not is_admin:
+        # Non-admins only see their own pickups (but only if history is enabled for them)
+        stmt = stmt.where(Pickup.user_id == user.id)
+
     raw_rows = session.exec(stmt).all()
 
     # 5) Convert to (Pickup, Pharmacy, User) tuples and collect pickup_ids
-    rows: List[Tuple[Pickup, Pharmacy, User]] = []
+    rows: List[Tuple[Pickup, Optional[Pharmacy], Optional[User]]] = []
     pickup_ids: List[int] = []
     for tup in raw_rows:
         pickup = tup[0] if len(tup) > 0 else None
@@ -392,27 +368,25 @@ def history_page(
 
     if pickup_ids:
         photo_stmt = (
-            sa_select(PickupPhoto.pickup_id, PickupPhoto.public_id).where(
-                PickupPhoto.pickup_id.in_(pickup_ids)
-            )
-            # Order by idx so thumbnails stay in "slot" order (1..4)
+            sa_select(PickupPhoto.pickup_id, PickupPhoto.public_id)
+            .where(PickupPhoto.pickup_id.in_(pickup_ids))  # type: ignore[arg-type]
             .order_by(PickupPhoto.pickup_id, PickupPhoto.idx)
         )
-        for pid_val, public_id in session.exec(photo_stmt):
-            pid_int = int(pid_val)
-            photo_public_ids.setdefault(pid_int, []).append(public_id)
+        for pickup_id, public_id in session.exec(photo_stmt).all():
+            photo_public_ids.setdefault(pickup_id, []).append(public_id)
 
-    # 7) Group rows by day for the UI
-    groups: List[Dict[str, object]] = []
-    last_day_key: Optional[date] = None
-    for pickup, ph, u in rows:
-        day_key = pickup.created_at.date() if pickup.created_at else date.min
-        if last_day_key != day_key:
-            groups.append({"day": day_key, "items": []})
-            last_day_key = day_key
-        groups[-1]["items"].append((pickup, ph, u))
+    # 7) Group by day (date portion of created_at in DE time)
+    groups: Dict[str, List[Tuple[Pickup, Optional[Pharmacy], Optional[User]]]] = {}
+    for pickup, pharmacy, user_row in rows:
+        # Convert UTC->DE for grouping purposes
+        created_at_utc = pickup.created_at
+        if created_at_utc.tzinfo is None:
+            created_at_utc = created_at_utc.replace(tzinfo=timezone.utc)
+        created_at_de = created_at_utc.astimezone(TZ_DE)
+        day_key = created_at_de.date().isoformat()
+        groups.setdefault(day_key, []).append((pickup, pharmacy, user_row))
 
-    # 8) Dropdown datasets for filters (only really used by admin via template)
+    # 8) Reference lists for filters
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
     users = session.exec(sm_select(User).order_by(User.login)).all()
@@ -433,6 +407,7 @@ def history_page(
         {
             "request": request,
             "user": user,
+            "settings": settings,
             "groups": groups,  # grouped rows by day
             "photo_public_ids": photo_public_ids,  # pickup_id -> [public_id1, public_id2, ...]
             "regions": regions,
@@ -444,39 +419,214 @@ def history_page(
     )
 
 
-# -------------------------- ADMIN DASHBOARD -------------------------
-@router.get("/admin", response_class=HTMLResponse)
-def admin_home(
+@router.get("/history/export")
+def history_export(
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+    # Accept same filter params as /history so export matches UI
+    region_id: Optional[str] = Query(None),
+    pharmacy_id: Optional[str] = Query(None),
+    driver_id: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    quick_range: Optional[str] = Query(None),
+    format: str = Query("csv"),
+):
+    """
+    Export pickup history for admins as CSV or Excel.
+
+    Columns:
+      - region
+      - pharmacy
+      - driver
+      - pickup_time_de  (pickup timestamp converted to Europe/Berlin)
+      - photo_count     (number of stored photos)
+      - geolocation     (lat,lon if coordinates are present)
+      - comment         (optional driver comment)
+    """
+    require_admin(user)
+
+    # 1) Parse filters
+    rid = _parse_int(region_id)
+    pid = _parse_int(pharmacy_id)
+    did = _parse_int(driver_id)
+    dfrom = _parse_date(date_from)
+    dto = _parse_date(date_to)
+
+    # Apply quick_range if dates are not set
+    if quick_range and not (dfrom or dto):
+        q_from, q_to = _compute_quick_range(quick_range)
+        dfrom = dfrom or q_from
+        dto = dto or q_to
+
+    # 2) Base query: same joins as history_page
+    join_expr = outerjoin(
+        outerjoin(
+            outerjoin(Pickup, Pharmacy, Pharmacy.id == Pickup.pharmacy_id),
+            Region,
+            Region.id == Pharmacy.region_id,
+        ),
+        User,
+        User.id == Pickup.user_id,
+    )
+
+    stmt = (
+        sa_select(Pickup, Pharmacy, Region, User)
+        .select_from(join_expr)
+        .order_by(Pickup.created_at.desc())
+    )
+
+    # 3) Apply filters (admins can filter by any combination)
+    if rid:
+        stmt = stmt.where(Region.id == rid)
+    if pid:
+        stmt = stmt.where(Pharmacy.id == pid)
+    if did:
+        stmt = stmt.where(User.id == did)
+    if dfrom:
+        stmt = stmt.where(Pickup.created_at >= _as_start_dt(dfrom))
+    if dto:
+        stmt = stmt.where(Pickup.created_at <= _as_end_dt(dto))
+
+    raw_rows = session.exec(stmt).all()
+
+    # 4) Build list of typed tuples and pickup IDs
+    rows: list[tuple[Pickup, Optional[Pharmacy], Optional[Region], Optional[User]]] = []
+    pickup_ids: list[int] = []
+
+    for tup in raw_rows:
+        pickup = tup[0] if len(tup) > 0 else None
+        pharmacy = tup[1] if len(tup) > 1 else None
+        region = tup[2] if len(tup) > 2 else None
+        user_row = tup[3] if len(tup) > 3 else None
+
+        if pickup is None:
+            continue
+
+        rows.append((pickup, pharmacy, region, user_row))
+        pickup_ids.append(pickup.id)
+
+    # 5) Photo counts per pickup (using a lightweight query)
+    photo_count_by_pickup: dict[int, int] = {}
+    if pickup_ids:
+        photo_stmt = sa_select(PickupPhoto.pickup_id).where(
+            PickupPhoto.pickup_id.in_(pickup_ids)  # type: ignore[arg-type]
+        )
+        for (pid_row,) in session.exec(photo_stmt).all():
+            photo_count_by_pickup[pid_row] = photo_count_by_pickup.get(pid_row, 0) + 1
+
+    # 6) Build export rows
+    data_rows: list[dict[str, str]] = []
+    for pickup, pharmacy, region, user_row in rows:
+        region_name = region.name if region else ""
+        pharmacy_name = pharmacy.name if pharmacy else ""
+        driver_name = ""
+        if user_row is not None:
+            driver_name = getattr(user_row, "full_name", None) or user_row.login
+
+        pickup_time_de = _utc_to_de(pickup.created_at)
+        pickup_time_str = pickup_time_de.strftime("%Y-%m-%d %H:%M:%S")
+
+        photo_count = photo_count_by_pickup.get(pickup.id, 0)
+
+        if pickup.latitude is not None and pickup.longitude is not None:
+            geolocation = f"{pickup.latitude:.6f},{pickup.longitude:.66f}"
+        else:
+            geolocation = ""
+
+        data_rows.append(
+            {
+                "region": region_name,
+                "pharmacy": pharmacy_name,
+                "driver": driver_name,
+                "pickup_time_de": pickup_time_str,
+                "photo_count": str(photo_count),
+                "geolocation": geolocation,
+                "comment": pickup.comment or "",
+            }
+        )
+
+    # 7) Export in requested format
+    headers = [
+        "region",
+        "pharmacy",
+        "driver",
+        "pickup_time_de",
+        "photo_count",
+        "geolocation",
+        "comment",
+    ]
+
+    fmt = (format or "csv").lower()
+    if fmt not in {"csv", "xlsx"}:
+        raise HTTPException(
+            status_code=400, detail="Invalid export format, expected csv or xlsx."
+        )
+
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(data_rows)
+        output.seek(0)
+
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": 'attachment; filename="pickups_history.csv"'
+            },
+        )
+
+    # Excel export via openpyxl
+    try:
+        from openpyxl import Workbook  # type: ignore[import]
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise HTTPException(
+            status_code=500,
+            detail=f"Excel export is not available: {exc}",
+        )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "History"
+
+    ws.append(headers)
+    for row in data_rows:
+        ws.append([row[h] for h in headers])
+
+    binary_output = io.BytesIO()
+    wb.save(binary_output)
+    binary_output.seek(0)
+
+    return StreamingResponse(
+        binary_output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="pickups_history.xlsx"'},
+    )
+
+
+# ------------------------- Admin stats (example) -------------------------
+@router.get("/admin/stats", response_class=HTMLResponse)
+def admin_stats_page(
     request: Request,
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
+    settings: AppSettings = Depends(get_app_settings),
 ):
     """
-    Admin dashboard:
-    - User management (create, toggle active)
-    - Region management (create, toggle active)
-    - Pharmacy management (create, toggle active)
-    - User ↔ Pharmacy assignments
-    - Basic statistics
+    Example admin stats page.
+
+    Currently shows simple counts; can be extended later.
     """
     require_admin(current)
 
-    # --- Quick table counts ---
-    tables = [
-        "users",
-        "regions",
-        "pharmacies",
-        "pickups",
-        "user_pharmacy_links",
-        "pickup_photos",
-        "app_settings",
-    ]
-    counts: Dict[str, Optional[int]] = {}
-    for tbl in tables:
-        try:
-            counts[tbl] = session.exec(text(f'SELECT COUNT(*) FROM "{tbl}"')).one()[0]
-        except Exception:
-            counts[tbl] = None
+    counts = {
+        "users": session.exec(sm_select(func.count(User.id))).one(),
+        "regions": session.exec(sm_select(func.count(Region.id))).one(),
+        "pharmacies": session.exec(sm_select(func.count(Pharmacy.id))).one(),
+    }
 
     users = session.exec(sm_select(User).order_by(User.login)).all()
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
@@ -493,6 +643,7 @@ def admin_home(
     context = {
         "request": request,
         "user": current,
+        "settings": settings,
         "stats": {"counts": counts},
         "users": users,
         "regions": regions,
@@ -500,9 +651,6 @@ def admin_home(
         "user_by_id": user_by_id,
         "region_by_id": region_by_id,
         "assignments": assignments,
-        "user_list": users,
-        "region_list": regions,
-        "regions_all": regions,
     }
 
-    return templates.TemplateResponse("admin/home.html", context)
+    return templates.TemplateResponse("admin/stats.html", context)
