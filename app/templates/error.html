@@ -2,10 +2,13 @@
 {% block title %}Error {{ code }}{% endblock %}
 {% block content %}
 
-<section class="page-hero card">
-  <h1>Error {{ code }}</h1>
-  <p class="text-error">{{ detail or "Something went wrong." }}</p>
-  <div class="form-actions" style="margin-top:.75rem">
+<section class="page-hero">
+  <h2 class="page-title">Error {{ code }}</h2>
+  <p class="lead">{{ detail or "Something went wrong." }}</p>
+</section>
+
+<section class="card error-card">
+  <div class="form-actions error-actions">
     <a href="/" class="btn btn-secondary">Back to home</a>
   </div>
 </section>

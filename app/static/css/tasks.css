@@ -1,0 +1,98 @@
+/* ============================================
+   TASKS PAGE — PHARMACY LIST & CARD STYLES
+   ============================================ */
+
+/* Extra spacing between the hero section and the grid */
+.page-hero + .tasks-grid {
+  margin-top: 1.2rem;
+}
+
+/* Main grid for tasks (pharmacies) */
+.tasks-grid {
+  /* Turn this section into a CSS grid */
+  display: grid;
+
+  /* Two equal columns on desktop */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  /* Vertical and horizontal spacing between cards */
+  gap: 2.4rem 1.4rem; /* row-gap | column-gap */
+}
+
+/* Individual pharmacy card */
+.task-card {
+  display: block;
+  text-decoration: none;
+  color: var(--texttask);
+
+  background: var(--brand);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+
+  /* Internal padding */
+  padding: 1.1rem 1.2rem 1rem;
+
+  /* Small extra breathing room inside the grid cell */
+  margin: 0.25rem 0;
+
+  transition:
+    transform 0.06s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    filter 0.2s ease;
+}
+
+/* Hover / active state — themed with brand color */
+.task-card:hover {
+  transform: translateY(-1px);
+
+  /* Use brand color for border highlight */
+  background: var(--brandred);
+
+
+
+  filter: brightness(1.03);
+}
+
+/* Card title (pharmacy name) */
+.task-title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin-bottom: 0.25rem;
+  font-size: 1.05rem;
+}
+
+/* Address line */
+.task-sub {
+  font-size: 0.95rem;
+  margin-bottom: 0.55rem;
+}
+
+/* CTA text with brand gradient */
+.task-cta {
+  font-weight: 700;
+  opacity: 0.9;
+  font-size: 0.9rem;
+
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* "No pharmacies" message */
+.tasks-empty {
+  margin-top: 1.1rem;
+}
+
+/* Mobile layout — stacked cards */
+@media (max-width: 720px) {
+  .tasks-grid {
+    /* Single column on small screens */
+    grid-template-columns: 1fr;
+
+    /* Slightly smaller gap for mobile */
+    gap: 1.4rem 1rem;
+  }
+}

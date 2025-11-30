@@ -1,0 +1,16 @@
+{# templates/partials/icons.html #}
+{# 
+  Jinja macro to render an SVG icon.
+  Assumes that an inline SVG sprite with <symbol id="icon-..."> 
+  is present somewhere in the DOM (e.g. via icons-sprite include in base.html).
+#}
+{% macro icon(name, extra_class="") %}
+  <svg
+    class="icon {{ extra_class }}"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {# IMPORTANT: local reference, not /static/icons.svg#... #}
+    <use href="#icon-{{ name }}"></use>
+  </svg>
+{% endmacro %}

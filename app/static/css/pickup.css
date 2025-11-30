@@ -1,0 +1,223 @@
+/* Pickup page layout */
+
+.pickup-card {
+  margin-top: 1.1rem;
+}
+
+.pickup-form {
+  gap: 1rem;
+}
+
+/* Note text and status under location row */
+.pickup-note {
+  display: block;
+}
+
+.pickup-location-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+}
+
+/* Location row: button + lat/lon inline */
+.pickup-location-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+
+.form-label.inline-label {
+  margin: 0;
+  min-width: 120px;
+  flex: 0 0 140px;
+}
+
+.form-input-compact {
+  padding-block: 0.35rem;
+}
+
+/* status text style */
+.pickup-loc-status {
+  font-size: 0.85rem;
+}
+
+/* Photo slots grid */
+
+.photo-slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 10px 0 6px 0;
+}
+
+.slot {
+  position: relative;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 10px;
+  background: radial-gradient(
+    circle at top left,
+    rgba(91, 113, 239, 0.18),
+    transparent 55%
+  );
+}
+
+/* clickable wrapper for file input */
+.slot-label {
+  display: block;
+  cursor: pointer;
+}
+
+/* header row: title + badge */
+.slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: .4rem;
+}
+
+.slot-title {
+  font-weight: 600;
+  font-size: .95rem;
+}
+
+.slot-badge {
+  font-size: .7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.slot-badge-required {
+  border-color: var(--warn, #f59e0b);
+  color: var(--warn, #f59e0b);
+}
+
+/* custom file input row */
+.file-input-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .45rem .6rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  transition: border-color .15s ease, background .15s ease, transform .05s ease;
+}
+
+.slot-label:hover .file-input-row {
+  border-color: var(--brand, #5b71ef);
+  background: rgba(0, 0, 0, 0.5);
+  transform: translateY(-1px);
+}
+
+.file-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.file-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-main-text {
+  font-size: .9rem;
+  font-weight: 500;
+}
+
+.slot-filename {
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* native file input — visually hidden but clickable via label */
+.slot-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* help text inside label */
+.slot-label > small {
+  display: block;
+  margin-top: .35rem;
+}
+
+/* preview area */
+.slot-preview {
+  margin-top: 8px;
+  min-height: 80px;
+  display: grid;
+  place-items: center;
+  background: var(--glass, rgba(255, 255, 255, 0.05));
+  border-radius: 10px;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.slot-preview img {
+  display: block;
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* Small inline spinner inside the button */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: spin .8s linear infinite;
+  vertical-align: -2px;
+}
+
+.spinner[hidden] {
+  display: none !important;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Avoid double loading indicator from global .btn */
+.btn[aria-busy]::before,
+.btn.btn-ghost[aria-busy]::before,
+.btn.is-loading::before {
+  content: none !important;
+  animation: none !important;
+}
+
+/* Responsive layout */
+
+@media (max-width: 900px) {
+  .photo-slots {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .photo-slots {
+    grid-template-columns: 1fr;
+  }
+
+  .pickup-location-row {
+    align-items: stretch;
+  }
+
+  .form-label.inline-label {
+    flex: 1 1 45%;
+  }
+}

@@ -1,17 +1,10 @@
 # app/db/session.py
-"""
-Database engine and session helpers.
-
-- Uses PG_CONN_STR from environment (see app/core/config.py).
-- Provides a shared SQLModel engine.
-- Provides `get_session()` dependency for FastAPI routes.
-"""
 
 from __future__ import annotations
 
 from typing import Generator
 
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.core.config import get_settings
 from app.core.security import hash_password
@@ -31,7 +24,6 @@ from app.db.models import (
 _settings = get_settings()
 PG_CONN_STR = _settings.PG_CONN_STR
 
-# echo=False → no SQL logging by default
 engine = create_engine(PG_CONN_STR, echo=False, pool_pre_ping=True)
 
 
@@ -44,32 +36,36 @@ def get_engine():
 # Session dependency
 # ---------------------------------------------------------------------
 def get_session() -> Generator[Session, None, None]:
-    """
-    FastAPI dependency — yields a scoped DB session.
-
-    Usage:
-        def endpoint(session: Session = Depends(get_session)):
-            ...
-    """
+    """FastAPI dependency — yields a scoped DB session."""
     with Session(engine) as session:
         yield session
 
 
 # ---------------------------------------------------------------------
-# Schema initialization (non-destructive)
+# Schema initialization (non-destructive + idempotent seed)
 # ---------------------------------------------------------------------
 def init_db() -> None:
     """
-    Create all tables if they don't exist.
+    Create all tables if they don't exist and seed demo data only once.
 
-    This is non-destructive: it will NOT drop existing tables.
-    For a full reset + seed in development, see a separate reset script.
+    - Non-destructive: existing tables are not dropped.
+    - Idempotent: demo data is inserted only on the very first initialization.
     """
     # Import models so that SQLModel sees all table definitions
     from app.db import models  # noqa: F401
 
+    # Create tables if they don't exist
     SQLModel.metadata.create_all(engine)
+
     with Session(engine) as session:
+        # ---- Check if DB was already initialized ----
+        # If there is at least one AppSettings row, we assume seeding was done.
+        existing_settings = session.exec(select(AppSettings.id).limit(1)).first()
+
+        if existing_settings is not None:
+            # DB already has settings → skip seeding to avoid duplicates
+            return
+
         # -------------------- Global settings --------------------
         settings = AppSettings(
             id=1,
@@ -80,13 +76,13 @@ def init_db() -> None:
         )
         session.add(settings)
 
-        # -------------------- Regions --------------------
+        # -------------------- Regions (demo) --------------------
         region_a = Region(name="Test Region A", is_active=True)
         region_b = Region(name="Test Region B", is_active=True)
         session.add(region_a)
         session.add(region_b)
-        # -------------------- Regions --------------------
-        # Source list of region names (cleaned: without short codes in brackets).
+
+        # Optional: extended regions list
         region_names = [
             "Aachen",
             "Berlin",
@@ -105,19 +101,15 @@ def init_db() -> None:
             "Wiesbaden-Mainz",
         ]
 
-        # Create Region objects in a loop
         regions = []
         for name in region_names:
-            region = Region(name=name, is_active=True)  # default: region is active
+            region = Region(name=name, is_active=True)
             regions.append(region)
 
-        # Add all regions to the session
         session.add_all(regions)
+        session.flush()  # get IDs
 
-        # Flush to get database IDs for later relations
-        session.flush()
-
-        # -------------------- Pharmacies --------------------
+        # -------------------- Pharmacies (demo) --------------------
         pharmacy_a1 = Pharmacy(
             name="Test Pharmacy A1",
             region_id=region_a.id,
@@ -132,7 +124,7 @@ def init_db() -> None:
         session.add(pharmacy_b1)
         session.flush()
 
-        # -------------------- Users --------------------
+        # -------------------- Users (demo) --------------------
         admin = User(
             login="admin",
             password_hash=hash_password("admin123"),
@@ -178,7 +170,6 @@ def init_db() -> None:
         session.flush()
 
         # -------------------- User ↔ Pharmacy assignments --------------------
-        # All drivers can access both demo pharmacies
         for drv in (driver1, driver2, driver3, driver4):
             session.add(UserPharmacyLink(user_id=drv.id, pharmacy_id=pharmacy_a1.id))
             session.add(UserPharmacyLink(user_id=drv.id, pharmacy_id=pharmacy_b1.id))

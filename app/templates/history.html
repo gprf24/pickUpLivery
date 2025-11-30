@@ -2,63 +2,221 @@
 {% block title %}History · PickUp Livery{% endblock %}
 {% block content %}
 
-<section class="page-hero card">
-  <h2 class="page-title">Pickup History</h2>
-  <p class="lead">Filter by date, region, pharmacy or driver. Grouped by day with collapsible sections.</p>
+<section class="page-hero">
+  <h1 class="page-title">Pickup History</h1>
+  <p class="lead">Filter by date, region, pharmacy or driver. The list updates automatically.</p>
 </section>
 
 {% if user.role == "admin" %}
-  <details class="filters card">
-    <summary>Filters</summary>
-    <form method="get" action="/history" class="form-grid grid cols-3">
-      <label class="form-label">Date from
-        <input type="date" name="date_from" value="{{ active_filters.date_from }}" class="form-input">
-      </label>
+  <!-- ===================== FILTER BAR ===================== -->
+  <section class="card filter-bar">
 
-      <label class="form-label">Date to
-        <input type="date" name="date_to" value="{{ active_filters.date_to }}" class="form-input">
-      </label>
+    <form method="get" action="/history" class="filter-chips-layout" id="historyFilters">
 
-      <label class="form-label">Region
-        <select name="region_id" class="form-input">
-          <option value="">—</option>
+      <!-- Hidden quick_range for presets -->
+      <input type="hidden" name="quick_range" id="quickRangeInput"
+             value="{{ active_filters.quick_range or '' }}">
+
+      <!-- Left: simple counter -->
+      <div class="filter-counter">
+        Pickups:
+        <span class="filter-counter-number">
+          {{ groups|length or 0 }}
+        </span>
+      </div>
+
+      <!-- ========= DATE CHIP + POPOVER ========= -->
+      <div class="chip-wrapper">
+        {% set df = active_filters.date_from %}
+        {% set dt = active_filters.date_to %}
+
+        <!-- Chip that shows the currently selected range -->
+        <button type="button" class="chip chip-date" id="dateChip">
+          <span class="chip-main-text">
+            {% if df or dt %}
+              {{ df or '...' }} – {{ dt or '...' }}
+            {% else %}
+              Select period
+            {% endif %}
+          </span>
+          {% if df or dt %}
+            <span class="chip-clear-icon" id="clearDatesIcon">×</span>
+          {% endif %}
+          <span class="chip-caret"></span>
+        </button>
+
+        <!-- Popover with presets + calendar -->
+        <div class="date-popover" id="datePopover">
+          <div class="date-popover-panel">
+            <div class="date-popover-grid">
+
+              <!-- Presets column -->
+              <div class="date-presets">
+                <button type="button"
+                        class="quick-btn {% if active_filters.quick_range=='today' %}is-active{% endif %}"
+                        data-range="today">Today</button>
+
+                <button type="button"
+                        class="quick-btn {% if active_filters.quick_range=='yesterday' %}is-active{% endif %}"
+                        data-range="yesterday">Yesterday</button>
+
+                <button type="button"
+                        class="quick-btn {% if active_filters.quick_range=='this_week' %}is-active{% endif %}"
+                        data-range="this_week">This week</button>
+
+                <button type="button"
+                        class="quick-btn {% if active_filters.quick_range=='last_week' %}is-active{% endif %}"
+                        data-range="last_week">Last week</button>
+              </div>
+
+              <!-- Date inputs -->
+              <div class="date-inputs">
+                <label class="date-input-label">
+                  From
+                  <input type="date"
+                         name="date_from"
+                         value="{{ active_filters.date_from }}"
+                         class="date-input js-filter-auto">
+                </label>
+
+                <label class="date-input-label">
+                  To
+                  <input type="date"
+                         name="date_to"
+                         value="{{ active_filters.date_to }}"
+                         class="date-input js-filter-auto">
+                </label>
+
+                <button type="button" class="btn-xs btn-ghost" id="clearDatesBtn">
+                  Reset
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ========= REGION DROPDOWN CHIP ========= #}
+      {% set ns_region = namespace(label='') %}
+      {% if active_filters.region_id %}
+        {% for r in regions %}
+          {% if r.id == active_filters.region_id|int %}
+            {% set ns_region.label = r.name %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      <div class="chip-dropdown-wrapper" data-filter="region">
+        <button type="button" class="chip chip-dropdown">
+          <span class="chip-main-text">
+            {{ ns_region.label or 'Region' }}
+          </span>
+          {% if ns_region.label %}
+            <span class="chip-clear-icon">×</span>
+          {% endif %}
+          <span class="chip-caret"></span>
+        </button>
+        <div class="dropdown-menu">
+          <button type="button"
+                  class="dropdown-item {% if not active_filters.region_id %}is-active{% endif %}"
+                  data-value="">
+            All regions
+          </button>
           {% for r in regions %}
-            <option value="{{ r.id }}" {% if active_filters.region_id and r.id == active_filters.region_id|int %}selected{% endif %}>{{ r.name }}</option>
+            <button type="button"
+                    class="dropdown-item {% if active_filters.region_id and r.id == active_filters.region_id|int %}is-active{% endif %}"
+                    data-value="{{ r.id }}">
+              {{ r.name }}
+            </button>
           {% endfor %}
-        </select>
-      </label>
+        </div>
+        <input type="hidden" name="region_id" value="{{ active_filters.region_id }}">
+      </div>
 
-      <label class="form-label">Pharmacy
-        <select name="pharmacy_id" class="form-input">
-          <option value="">—</option>
+      {# ========= PHARMACY DROPDOWN CHIP ========= #}
+      {% set ns_pharmacy = namespace(label='') %}
+      {% if active_filters.pharmacy_id %}
+        {% for p in pharmacies %}
+          {% if p.id == active_filters.pharmacy_id|int %}
+            {% set ns_pharmacy.label = p.name %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      <div class="chip-dropdown-wrapper" data-filter="pharmacy">
+        <button type="button" class="chip chip-dropdown">
+          <span class="chip-main-text">
+            {{ ns_pharmacy.label or 'Pharmacy' }}
+          </span>
+          {% if ns_pharmacy.label %}
+            <span class="chip-clear-icon">×</span>
+          {% endif %}
+          <span class="chip-caret"></span>
+        </button>
+        <div class="dropdown-menu">
+          <button type="button"
+                  class="dropdown-item {% if not active_filters.pharmacy_id %}is-active{% endif %}"
+                  data-value="">
+            All pharmacies
+          </button>
           {% for p in pharmacies %}
-            <option value="{{ p.id }}" {% if active_filters.pharmacy_id and p.id == active_filters.pharmacy_id|int %}selected{% endif %}>{{ p.name }}</option>
+            <button type="button"
+                    class="dropdown-item {% if active_filters.pharmacy_id and p.id == active_filters.pharmacy_id|int %}is-active{% endif %}"
+                    data-value="{{ p.id }}">
+              {{ p.name }}
+            </button>
           {% endfor %}
-        </select>
-      </label>
+        </div>
+        <input type="hidden" name="pharmacy_id" value="{{ active_filters.pharmacy_id }}">
+      </div>
 
-      <label class="form-label">Driver
-        <select name="driver_id" class="form-input">
-          <option value="">—</option>
+      {# ========= DRIVER DROPDOWN CHIP ========= #}
+      {% set ns_driver = namespace(label='') %}
+      {% if active_filters.driver_id %}
+        {% for u in users %}
+          {% if u.id == active_filters.driver_id|int %}
+            {% set ns_driver.label = u.full_name or u.login %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      <div class="chip-dropdown-wrapper" data-filter="driver">
+        <button type="button" class="chip chip-dropdown">
+          <span class="chip-main-text">
+            {{ ns_driver.label or 'Driver' }}
+          </span>
+          {% if ns_driver.label %}
+            <span class="chip-clear-icon">×</span>
+          {% endif %}
+          <span class="chip-caret"></span>
+        </button>
+        <div class="dropdown-menu">
+          <button type="button"
+                  class="dropdown-item {% if not active_filters.driver_id %}is-active{% endif %}"
+                  data-value="">
+            All drivers
+          </button>
           {% for u in users %}
-            <option value="{{ u.id }}" {% if active_filters.driver_id and u.id == active_filters.driver_id|int %}selected{% endif %}>
+            <button type="button"
+                    class="dropdown-item {% if active_filters.driver_id and u.id == active_filters.driver_id|int %}is-active{% endif %}"
+                    data-value="{{ u.id }}">
               {{ u.full_name or u.login }}
-            </option>
+            </button>
           {% endfor %}
-        </select>
-      </label>
+        </div>
+        <input type="hidden" name="driver_id" value="{{ active_filters.driver_id }}">
+      </div>
 
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Apply</button>
+      <!-- ========= CLEAR ALL ========= -->
+      <div class="filter-actions">
         <a href="/history" role="button" class="btn btn-secondary">Reset</a>
       </div>
     </form>
-  </details>
+  </section>
 {% endif %}
 
+<!-- Warn messages -->
 {% if warnings and warnings|length %}
   <div class="alert alert-warn">
-    <ul style="margin:0; padding-left: 1.2rem;">
+    <ul style="margin:0; padding-left:1.2rem;">
       {% for w in warnings %}
         <li>{{ w }}</li>
       {% endfor %}
@@ -66,143 +224,424 @@
   </div>
 {% endif %}
 
+<!-- ======================== HISTORY LIST ======================== -->
+
 {% if groups and groups|length %}
-  <section class="card" style="padding: .75rem 1rem;">
-    <div class="h-legend muted" style="margin-bottom:.5rem">Click a date to expand</div>
+  <section class="card history-card">
+    <div class="h-legend muted">Click a row to see photos, GPS & metadata.</div>
 
-    <div class="history-groups stack">
-      {% for g in groups %}
-        {% set items = g["items"] %}
-        {% set count = items|length %}
-        <details class="h-group">
-          <summary>
-            <div class="h-summary">
-              <strong class="h-date">{{ g.day.strftime('%Y-%m-%d') }}</strong>
-              <span class="h-count badge">{{ count }} {{ 'item' if count == 1 else 'items' }}</span>
-            </div>
-          </summary>
+    {% for g in groups %}
+      {% set items = g["items"] %}
+      {% set count = items|length %}
 
-          <div class="table-wrap" style="margin-top:.5rem">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date (local)</th>
-                  {% if user.role == "admin" %}<th>Driver</th>{% endif %}
-                  <th>Pharmacy</th>
-                  <th>Status</th>
-                  <th>Photos</th>
-                  <th>Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for pickup, ph, u in items %}
-                  <tr>
-                    <td>
-                      <time class="utc-to-local"
-                            datetime="{{ pickup.created_at.strftime('%Y-%m-%dT%H:%M:%S') }}Z"
-                            title="UTC: {{ pickup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}Z">
-                        {{ pickup.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
-                      </time>
-                    </td>
-
-                    {% if user.role == "admin" %}
-                      <td>{{ (u.full_name or u.login) if u else "-" }}</td>
-                    {% endif %}
-
-                    <td>{{ ph.name if ph else "-" }}</td>
-
-                    <td>
-                      {% if pickup.status in ["ok","success","done"] %}
-                        <span class="badge ok">OK</span>
-                      {% else %}
-                        <span class="badge">{{ pickup.status }}</span>
-                      {% endif %}
-                    </td>
-
-                    <td class="photos-cell">
-                      {# Get list of public_ids for this pickup #}
-                      {% set pids = (photo_public_ids.get(pickup.id) or []) %}
-                      {% set photo_qty = pids|length %}
-
-                      {% if photo_qty > 0 %}
-                        <div class="photo-count">
-                          {{ photo_qty }} {{ "photo" if photo_qty == 1 else "photos" }}
-                        </div>
-                        <div class="thumbs">
-                          {# Show up to 4 thumbnails using public_id-based URLs #}
-                          {% for pid in pids[:4] %}
-                            <a href="/photos/{{ pid }}" target="_blank" rel="noopener">
-                              <img src="/photos/{{ pid }}" alt="pickup photo" loading="lazy">
-                            </a>
-                          {% endfor %}
-                        </div>
-                      {% else %}
-                        —
-                      {% endif %}
-                    </td>
-
-                    <td>
-                      {% if pickup.latitude and pickup.longitude %}
-                        {{ "%.5f"|format(pickup.latitude) }}, {{ "%.5f"|format(pickup.longitude) }}
-                        &nbsp;·&nbsp;
-                        <a href="https://www.google.com/maps/search/?api=1&query={{ pickup.latitude }},{{ pickup.longitude }}"
-                           target="_blank" rel="noopener">Open map</a>
-                      {% else %}—{% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+      <div class="history-day">
+        <div class="history-day-header">
+          <div class="history-day-main">
+            <h3 class="history-day-title">{{ g.day.strftime('%Y-%m-%d') }}</h3>
+            <span class="pill">
+              {{ count }}
+              {% if count == 1 %}item{% else %}items{% endif %}
+            </span>
           </div>
-        </details>
-      {% endfor %}
-    </div>
+        </div>
+
+        <div class="history-list">
+          {% for pickup, ph, u in items %}
+            {% set pids = (photo_public_ids.get(pickup.id) or []) %}
+            {% set photo_qty = pids|length %}
+
+            <details class="history-row">
+              <summary>
+                <div class="history-row-main">
+
+                  <!-- Time -->
+                  <span class="history-col time">
+                    <time class="utc-to-local"
+                          datetime="{{ pickup.created_at.strftime('%Y-%m-%dT%H:%M:%S') }}Z"
+                          title="UTC: {{ pickup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}Z">
+                      {{ pickup.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                    </time>
+                  </span>
+
+                  <!-- Driver (admin-only) -->
+                  {% if user.role == "admin" %}
+                    <span class="history-col driver">
+                      {% if u %}
+                        {{ u.full_name or u.login }}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </span>
+                  {% endif %}
+
+                  <!-- Pharmacy -->
+                  <span class="history-col pharmacy">
+                    {% if ph %}
+                      {{ ph.name }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </span>
+
+                  <!-- Photos -->
+                  <span class="history-col photos">
+                    {% if photo_qty > 0 %}
+                      {{ photo_qty }} {% if photo_qty == 1 %}photo{% else %}photos{% endif %}
+                    {% else %}
+                      — 
+                    {% endif %}
+                  </span>
+
+                  <!-- Status -->
+                  <span class="history-col status">
+                    {% if pickup.status in ["ok","success","done"] %}
+                      <span class="status-pill status-ok">OK</span>
+                    {% else %}
+                      <span class="status-pill">{{ pickup.status }}</span>
+                    {% endif %}
+                  </span>
+
+                  <span class="history-col arrow" aria-hidden="true">›</span>
+                </div>
+              </summary>
+
+              <!-- ============ DETAILS PANEL ============ -->
+              <div class="history-row-details">
+                <div class="history-detail-grid">
+
+                  <!-- Photos -->
+                  <div class="history-detail-block">
+                    <h4>Photos</h4>
+                    {% if photo_qty > 0 %}
+                      <div class="photo-grid">
+                        {# 
+                          Each thumb:
+                          - shows image preview
+                          - stores the full list of pids for this pickup in data-pids
+                          - has data-index = index of this particular photo in that list
+                        #}
+                        {% for pid in pids[:6] %}
+                          <button type="button"
+                                  class="photo-thumb"
+                                  data-pids="{{ pids|join(',') }}"
+                                  data-index="{{ loop.index0 }}">
+                            <img src="/photos/{{ pid }}" alt="pickup photo" loading="lazy">
+                          </button>
+                        {% endfor %}
+                      </div>
+                    {% else %}
+                      <p class="muted">No photos uploaded.</p>
+                    {% endif %}
+                  </div>
+
+                  <!-- GPS -->
+                  <div class="history-detail-block">
+                    <h4>Location</h4>
+                    {% if pickup.latitude and pickup.longitude %}
+                      <p>
+                        {{ "%.5f"|format(pickup.latitude) }},
+                        {{ "%.5f"|format(pickup.longitude) }} <br>
+                        <a href="https://www.google.com/maps/search/?api=1&query={{ pickup.latitude }},{{ pickup.longitude }}"
+                           target="_blank" class="link">Open in Google Maps</a>
+                      </p>
+                    {% else %}
+                      <p class="muted">No GPS coordinates.</p>
+                    {% endif %}
+                  </div>
+
+                  <!-- Metadata -->
+                  <div class="history-detail-block">
+                    <h4>Metadata</h4>
+                    <dl class="meta-list">
+                      <div><dt>Status</dt><dd>{{ pickup.status }}</dd></div>
+                      <div>
+                        <dt>Created at (UTC)</dt>
+                        <dd>{{ pickup.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+                      </div>
+                      <div><dt>Pickup ID</dt><dd>{{ pickup.id }}</dd></div>
+                    </dl>
+                  </div>
+
+                </div>
+              </div>
+
+            </details>
+          {% endfor %}
+        </div>
+      </div>
+
+    {% endfor %}
   </section>
+
 {% else %}
   <div class="alert alert-warn">No pickups found.</div>
 {% endif %}
 
-<style>
-  .stack > * + * { margin-top: .75rem; }
-  .h-group {
-    background: rgba(255,255,255,.02);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .h-group summary {
-    cursor: pointer;
-    list-style: none;
-    padding: .75rem 1rem;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,0));
-  }
-  .h-group summary::-webkit-details-marker { display: none; }
-  .h-summary { display: flex; align-items: center; gap: .6rem; }
-  .h-date { letter-spacing: .2px; }
-  .h-count { font-weight: 600; }
-  .photos-cell .photo-count{margin-bottom:6px;opacity:.9}
-  .photos-cell .thumbs{display:flex;gap:6px;flex-wrap:wrap}
-  .photos-cell .thumbs img{width:42px;height:42px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
-</style>
+{# ===================== LIGHTBOX / CAROUSEL OVERLAY ===================== #}
+<div class="lightbox-backdrop" id="photoLightbox" hidden>
+  <div class="lightbox-content" role="dialog" aria-modal="true" aria-label="Pickup photos">
+    <button type="button" class="lightbox-close" id="lightboxClose" aria-label="Close">×</button>
+    <button type="button" class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous photo">‹</button>
+    <img id="lightboxImage" alt="Pickup photo">
+    <button type="button" class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next photo">›</button>
+    <div class="lightbox-counter" id="lightboxCounter"></div>
+  </div>
+</div>
+
 
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // UTC → local time conversion
-  (function(){
-    const nodes = document.querySelectorAll('time.utc-to-local');
-    for (const t of nodes){
-      const isoUtc = t.getAttribute('datetime');
-      if (!isoUtc) continue;
-      const d = new Date(isoUtc); // 'Z' => UTC
-      if (isNaN(d.getTime())) continue;
-      const opts = { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' };
-      t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
+/* ===================== UTC → Local conversion ===================== */
+(function() {
+  const nodes = document.querySelectorAll("time.utc-to-local");
+  for (const t of nodes) {
+    const iso = t.getAttribute("datetime");
+    if (!iso) continue;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) continue;
+
+    const opts = {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit"
+    };
+    t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
+  }
+})();
+
+/* ========================= FILTER LOGIC =========================== */
+(function() {
+  const form = document.getElementById("historyFilters");
+  if (!form) return;
+
+  const quickInput = document.getElementById("quickRangeInput");
+  const dateFrom = form.querySelector('input[name="date_from"]');
+  const dateTo   = form.querySelector('input[name="date_to"]');
+
+  /* --- auto-submit on date change --- */
+  const autos = form.querySelectorAll(".js-filter-auto");
+  autos.forEach(el => {
+    el.addEventListener("change", () => {
+      form.submit();
+    });
+  });
+
+  /* -------------------- date chip + popover -------------------- */
+  const dateChip = document.getElementById("dateChip");
+  const datePopover = document.getElementById("datePopover");
+  const clearDatesIcon = document.getElementById("clearDatesIcon");
+  const clearBtn = document.getElementById("clearDatesBtn");
+
+  function closePopover() {
+    if (!datePopover) return;
+    datePopover.classList.remove("is-open");
+  }
+
+  if (dateChip && datePopover) {
+    // open/close on chip click (ignore click on inner "x")
+    dateChip.addEventListener("click", (ev) => {
+      if (ev.target && ev.target.closest(".chip-clear-icon")) return;
+      datePopover.classList.toggle("is-open");
+    });
+
+    // close on outside click
+    document.addEventListener("click", (ev) => {
+      if (!datePopover.classList.contains("is-open")) return;
+      if (datePopover.contains(ev.target) || dateChip.contains(ev.target)) return;
+      closePopover();
+    });
+  }
+
+  /* --- clear via small "x" in date chip --- */
+  if (clearDatesIcon) {
+    clearDatesIcon.addEventListener("click", (ev) => {
+      ev.stopPropagation();  // don't open popover
+      if (dateFrom) dateFrom.value = "";
+      if (dateTo) dateTo.value = "";
+      if (quickInput) quickInput.value = "";
+      form.submit();
+    });
+  }
+
+  /* --- clear via Reset button in popover --- */
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      if (dateFrom) dateFrom.value = "";
+      if (dateTo) dateTo.value = "";
+      if (quickInput) quickInput.value = "";
+      form.submit();
+    });
+  }
+
+  /* -------------------- quick-range presets -------------------- */
+  const quickBtns = form.querySelectorAll(".quick-btn");
+  quickBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const range = btn.dataset.range || "";
+      if (quickInput) quickInput.value = range;
+
+      // clear manual dates so backend uses quick_range
+      if (dateFrom) dateFrom.value = "";
+      if (dateTo) dateTo.value = "";
+
+      form.submit();
+    });
+  });
+
+  /* -------------------- custom dropdown chips -------------------- */
+  const dropdownWrappers = form.querySelectorAll(".chip-dropdown-wrapper");
+
+  function closeAllDropdowns(except) {
+    dropdownWrappers.forEach(w => {
+      if (w !== except) {
+        w.classList.remove("is-open");
+      }
+    });
+  }
+
+  dropdownWrappers.forEach(wrapper => {
+    const toggle = wrapper.querySelector(".chip-dropdown");
+    const menu = wrapper.querySelector(".dropdown-menu");
+    const hiddenInput = wrapper.querySelector('input[type="hidden"]');
+    if (!toggle || !menu || !hiddenInput) return;
+
+    // open/close on chip click (ignore click on inner "x")
+    toggle.addEventListener("click", (ev) => {
+      if (ev.target && ev.target.closest(".chip-clear-icon")) return;
+      ev.stopPropagation();
+      const isOpen = wrapper.classList.contains("is-open");
+      closeAllDropdowns(isOpen ? wrapper : null);
+      wrapper.classList.toggle("is-open", !isOpen);
+    });
+
+    // click on item
+    menu.querySelectorAll(".dropdown-item").forEach(item => {
+      item.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const value = item.dataset.value || "";
+        hiddenInput.value = value;
+        form.submit();
+      });
+    });
+  });
+
+  // clear via "x" in region/pharmacy/driver chip
+  const clearIcons = form.querySelectorAll(".chip-dropdown-wrapper .chip-clear-icon");
+  clearIcons.forEach(icon => {
+    icon.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const wrapper = icon.closest(".chip-dropdown-wrapper");
+      if (!wrapper) return;
+      const hiddenInput = wrapper.querySelector('input[type="hidden"]');
+      if (!hiddenInput) return;
+      hiddenInput.value = "";
+      form.submit();
+    });
+  });
+
+  // close dropdowns on outside click
+  document.addEventListener("click", (ev) => {
+    dropdownWrappers.forEach(w => {
+      if (!w.contains(ev.target)) {
+        w.classList.remove("is-open");
+      }
+    });
+  });
+})();
+
+/* ========================= PHOTO LIGHTBOX / CAROUSEL ========================= */
+(function() {
+  const lightbox    = document.getElementById("photoLightbox");
+  if (!lightbox) return;
+
+  const img         = document.getElementById("lightboxImage");
+  const counterNode = document.getElementById("lightboxCounter");
+  const btnPrev     = document.getElementById("lightboxPrev");
+  const btnNext     = document.getElementById("lightboxNext");
+  const btnClose    = document.getElementById("lightboxClose");
+
+  let currentList = [];
+  let currentIndex = 0;
+
+  function updateImage() {
+    if (!currentList.length) return;
+    const pid = currentList[currentIndex];
+    img.src = "/photos/" + pid;
+    if (counterNode) {
+      counterNode.textContent = (currentIndex + 1) + " / " + currentList.length;
     }
-  })();
+  }
+
+  function openLightbox(list, index) {
+    if (!list || !list.length) return;
+    currentList = list;
+    currentIndex = Math.min(Math.max(index, 0), list.length - 1);
+    updateImage();
+    lightbox.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+
+  function closeLightbox() {
+    lightbox.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  if (btnPrev) {
+    btnPrev.addEventListener("click", () => {
+      if (!currentList.length) return;
+      currentIndex = (currentIndex - 1 + currentList.length) % currentList.length;
+      updateImage();
+    });
+  }
+
+  if (btnNext) {
+    btnNext.addEventListener("click", () => {
+      if (!currentList.length) return;
+      currentIndex = (currentIndex + 1) % currentList.length;
+      updateImage();
+    });
+  }
+
+  if (btnClose) {
+    btnClose.addEventListener("click", () => {
+      closeLightbox();
+    });
+  }
+
+  // Close when clicking on backdrop
+  lightbox.addEventListener("click", (ev) => {
+    if (ev.target === lightbox) {
+      closeLightbox();
+    }
+  });
+
+  // Keyboard navigation
+  document.addEventListener("keydown", (ev) => {
+    if (lightbox.hidden) return;
+    if (ev.key === "Escape") {
+      closeLightbox();
+    } else if (ev.key === "ArrowRight") {
+      btnNext && btnNext.click();
+    } else if (ev.key === "ArrowLeft") {
+      btnPrev && btnPrev.click();
+    }
+  });
+
+  // Attach to thumbnails
+  const thumbs = document.querySelectorAll(".photo-thumb");
+  thumbs.forEach((thumb) => {
+    thumb.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const pidsStr = thumb.getAttribute("data-pids") || "";
+      const indexStr = thumb.getAttribute("data-index") || "0";
+      if (!pidsStr) return;
+
+      const list = pidsStr.split(",").map(s => s.trim()).filter(Boolean);
+      const idx = parseInt(indexStr, 10) || 0;
+      openLightbox(list, idx);
+    });
+  });
+})();
 </script>
 {% endblock %}

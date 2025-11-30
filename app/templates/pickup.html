@@ -3,10 +3,13 @@
 {% block title %}Pickup — {{ pharmacy.name if pharmacy else 'Unknown Pharmacy' }}{% endblock %}
 
 {% block content %}
+{# Safe fallback: if setting is None, use 1 #}
 {% set min_photos = (min_required_photos if min_required_photos is not none else 1) %}
 {% set is_admin = (user.role == "admin") %}
+{# How many slots should visually show "Required" #}
+{% set required_slots = 4 if min_photos > 4 else min_photos %}
 
-<section class="page-hero card">
+<section class="page-hero">
   <h2 class="page-title">Pickup at {{ pharmacy.name }}</h2>
   <p class="lead">
     Take photos one-by-one into four slots.
@@ -14,7 +17,9 @@
   </p>
 </section>
 
-<section class="card">
+<a href="/tasks" class="btn btn-secondary">Back to tasks</a>
+
+<section class="card pickup-card">
   {% if message %}
     <div class="alert alert-ok success-msg" role="status">{{ message }}</div>
   {% endif %}
@@ -23,67 +28,82 @@
   {% endif %}
 
   <form id="pickupForm"
-        class="form-grid"
+        class="form-grid pickup-form"
         action="/pickup/{{ pharmacy.public_id }}"
         method="post"
         enctype="multipart/form-data">
 
-    {# ------------------ Coordinates block ------------------ #}
+    {# ------------------ Location row: button + lat/lon in one line ------------------ #}
     {% if is_admin %}
       {# ADMIN: can type coordinates manually #}
-      <div class="grid cols-2">
-        <label class="form-label">
-          Latitude
+      <div class="pickup-location-row">
+        <button type="button" class="btn btn-primary" id="btnLocate">
+          <span class="spinner" id="locSpinner" hidden></span>
+          Use current location
+        </button>
+
+        <label class="form-label inline-label">
+          Lat
           <input
             type="text"
             name="lat"
             id="lat"
-            class="form-input"
-            placeholder="e.g. 53.55"
+            class="form-input form-input-compact"
+            placeholder="53.55"
             {% if require_location %}required{% endif %}
           >
         </label>
-        <label class="form-label">
-          Longitude
+
+        <label class="form-label inline-label">
+          Lon
           <input
             type="text"
             name="lon"
             id="lon"
-            class="form-input"
-            placeholder="e.g. 9.99"
+            class="form-input form-input-compact"
+            placeholder="9.99"
             {% if require_location %}required{% endif %}
           >
         </label>
       </div>
 
-      <small class="muted" style="display:block; margin-top:.3rem; margin-bottom:.3rem;">
-        {% if require_location %}
-          Location is <strong>required</strong> for this pickup.
-          You can enter it manually or use the button below.
-        {% else %}
-          Location is optional but recommended to improve traceability.
-        {% endif %}
-      </small>
+      <div class="pickup-location-meta">
+        <small class="muted pickup-note">
+          {% if require_location %}
+            Location is <strong>required</strong> for this pickup.
+            You can enter it manually or use the button.
+          {% else %}
+            Location is optional but recommended to improve traceability.
+          {% endif %}
+        </small>
+        <small id="locStatus" class="muted pickup-loc-status" aria-live="polite"></small>
+      </div>
     {% else %}
       {# DRIVER: cannot type coordinates manually; only via geolocation button #}
-      <div class="grid cols-2">
-        <label class="form-label">
-          Latitude
+      <div class="pickup-location-row">
+        <button type="button" class="btn btn-primary" id="btnLocate">
+          <span class="spinner" id="locSpinner" hidden></span>
+          Use current location
+        </button>
+
+        <label class="form-label inline-label">
+          Lat
           <input
             type="text"
             id="lat_display"
-            class="form-input"
-            placeholder="Press the button below"
+            class="form-input form-input-compact"
+            placeholder="Press button"
             readonly
           >
         </label>
-        <label class="form-label">
-          Longitude
+
+        <label class="form-label inline-label">
+          Lon
           <input
             type="text"
             id="lon_display"
-            class="form-input"
-            placeholder="Press the button below"
+            class="form-input form-input-compact"
+            placeholder="Press button"
             readonly
           >
         </label>
@@ -93,158 +113,169 @@
       <input type="hidden" name="lat" id="lat">
       <input type="hidden" name="lon" id="lon">
 
-      <small class="muted" style="display:block; margin-top:.3rem; margin-bottom:.3rem;">
-        {% if require_location %}
-          Location is <strong>required</strong> for this pickup. Please use the button below to fill it automatically.
-        {% else %}
-          Location is optional but recommended to improve traceability.
-        {% endif %}
-      </small>
+      <div class="pickup-location-meta">
+        <small class="muted pickup-note">
+          {% if require_location %}
+            Location is <strong>required</strong> for this pickup. Please use the button to fill it automatically.
+          {% else %}
+            Location is optional but recommended to improve traceability.
+          {% endif %}
+        </small>
+        <small id="locStatus" class="muted pickup-loc-status" aria-live="polite"></small>
+      </div>
     {% endif %}
-
-    <!-- Locate button -->
-    <div class="form-actions">
-      <button type="button" class="btn btn-ghost" id="btnLocate">
-        <span class="spinner" id="locSpinner" hidden></span>
-        Use current location
-      </button>
-      <small id="locStatus" class="muted" aria-live="polite"></small>
-    </div>
 
     <!-- Four distinct photo slots -->
     <div class="photo-slots">
       <!-- Slot 1 -->
       <div class="slot">
-        <label class="form-label">
-          Photo slot 1
+        <label class="slot-label">
+          <div class="slot-header">
+            <span class="slot-title">Photo slot 1</span>
+            {% if required_slots >= 1 %}
+              <span class="slot-badge slot-badge-required">Required</span>
+            {% else %}
+              <span class="slot-badge">Optional</span>
+            {% endif %}
+          </div>
+
+          <div class="file-input-row">
+            <span class="file-icon" aria-hidden="true">📷</span>
+            <div class="file-texts">
+              <span class="file-main-text">Tap to take or upload photo</span>
+              <span class="slot-filename" data-empty="No file selected">No file selected</span>
+            </div>
+          </div>
+
           <input
             type="file"
             name="image1"
             id="image1"
             accept="image/*"
             {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
-            class="form-input"
+            class="slot-input"
           >
+
           <small class="muted">
-            Required — counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
+            Counts towards the minimum of {{ min_photos }} photo{{ 's' if min_photos != 1 else '' }}.
           </small>
         </label>
+
         <div class="slot-preview" id="preview1" aria-live="polite"></div>
       </div>
 
       <!-- Slot 2 -->
       <div class="slot">
-        <label class="form-label">
-          Photo slot 2
+        <label class="slot-label">
+          <div class="slot-header">
+            <span class="slot-title">Photo slot 2</span>
+            {% if required_slots >= 2 %}
+              <span class="slot-badge slot-badge-required">Required</span>
+            {% else %}
+              <span class="slot-badge">Optional</span>
+            {% endif %}
+          </div>
+
+          <div class="file-input-row">
+            <span class="file-icon" aria-hidden="true">📷</span>
+            <div class="file-texts">
+              <span class="file-main-text">Tap to take or upload photo</span>
+              <span class="slot-filename" data-empty="No file selected">No file selected</span>
+            </div>
+          </div>
+
           <input
             type="file"
             name="image2"
             id="image2"
             accept="image/*"
             {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
-            class="form-input"
+            class="slot-input"
           >
+
           <small class="muted">Optional.</small>
         </label>
+
         <div class="slot-preview" id="preview2" aria-live="polite"></div>
       </div>
 
       <!-- Slot 3 -->
       <div class="slot">
-        <label class="form-label">
-          Photo slot 3
+        <label class="slot-label">
+          <div class="slot-header">
+            <span class="slot-title">Photo slot 3</span>
+            {% if required_slots >= 3 %}
+              <span class="slot-badge slot-badge-required">Required</span>
+            {% else %}
+              <span class="slot-badge">Optional</span>
+            {% endif %}
+          </div>
+
+          <div class="file-input-row">
+            <span class="file-icon" aria-hidden="true">📷</span>
+            <div class="file-texts">
+              <span class="file-main-text">Tap to take or upload photo</span>
+              <span class="slot-filename" data-empty="No file selected">No file selected</span>
+            </div>
+          </div>
+
           <input
             type="file"
             name="image3"
             id="image3"
             accept="image/*"
             {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
-            class="form-input"
+            class="slot-input"
           >
+
           <small class="muted">Optional.</small>
         </label>
+
         <div class="slot-preview" id="preview3" aria-live="polite"></div>
       </div>
 
       <!-- Slot 4 -->
       <div class="slot">
-        <label class="form-label">
-          Photo slot 4
+        <label class="slot-label">
+          <div class="slot-header">
+            <span class="slot-title">Photo slot 4</span>
+            {% if required_slots >= 4 %}
+              <span class="slot-badge slot-badge-required">Required</span>
+            {% else %}
+              <span class="slot-badge">Optional</span>
+            {% endif %}
+          </div>
+
+          <div class="file-input-row">
+            <span class="file-icon" aria-hidden="true">📷</span>
+            <div class="file-texts">
+              <span class="file-main-text">Tap to take or upload photo</span>
+              <span class="slot-filename" data-empty="No file selected">No file selected</span>
+            </div>
+          </div>
+
           <input
             type="file"
             name="image4"
             id="image4"
             accept="image/*"
             {% if photo_source_mode == 'camera_only' %}capture="environment"{% endif %}
-            class="form-input"
+            class="slot-input"
           >
+
           <small class="muted">Optional.</small>
         </label>
+
         <div class="slot-preview" id="preview4" aria-live="polite"></div>
       </div>
     </div>
 
-    <div class="form-actions">
+    <div class="form-actions pickup-submit-row">
       <button type="submit" class="btn btn-primary">Submit pickup</button>
+      <a href="/tasks" class="btn btn-secondary">Back to tasks</a>
     </div>
   </form>
 </section>
-
-<style>
-  .photo-slots {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(120px, 1fr));
-    gap: 12px;
-    margin: 10px 0 6px 0;
-  }
-  .slot {
-    border: 1px solid var(--border, rgba(255,255,255,0.12));
-    border-radius: 10px;
-    padding: 10px;
-  }
-  .slot-preview {
-    margin-top: 8px;
-    min-height: 80px;
-    display: grid;
-    place-items: center;
-    background: var(--glass, rgba(255,255,255,0.05));
-    border-radius: 10px;
-    border: 1px dashed var(--border, rgba(255,255,255,0.12));
-  }
-  .slot-preview img {
-    display: block;
-    width: 100%;
-    height: 120px;
-    object-fit: cover;
-    border-radius: 8px;
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px; height: 14px;
-    border: 2px solid currentColor; border-right-color: transparent;
-    border-radius: 50%;
-    margin-right: 6px;
-    animation: spin .8s linear infinite;
-    vertical-align: -2px;
-  }
-  .spinner[hidden]{ display: none !important; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  @media (max-width: 900px) {
-    .photo-slots { grid-template-columns: repeat(2, 1fr); }
-  }
-  @media (max-width: 520px) {
-    .photo-slots { grid-template-columns: 1fr; }
-  }
-
-  .btn[aria-busy]::before,
-  .btn.btn-ghost[aria-busy]::before,
-  .btn.is-loading::before {
-    content: none !important;
-    animation: none !important;
-  }
-</style>
 {% endblock %}
 
 {% block scripts %}
@@ -252,27 +283,42 @@
   // pass backend flags into JS
   const REQUIRE_LOCATION = {{ 'true' if require_location else 'false' }};
   const IS_ADMIN = {{ 'true' if user.role == "admin" else 'false' }};
-  const MIN_REQUIRED_PHOTOS = {{ min_photos | int }};
+  const MIN_REQUIRED_PHOTOS = {{ (min_required_photos if min_required_photos is not none else 1) | int }};
 
-  // ---------- per-slot preview ----------
+  // ---------- per-slot preview + filename ----------
   function bindPreview(inputId, previewId) {
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
     if (!input || !preview) return;
 
     input.addEventListener('change', () => {
+      const slot = input.closest('.slot');
+      const filenameEl = slot ? slot.querySelector('.slot-filename') : null;
+
       preview.innerHTML = '';
-      const f = input.files && input.files[0];
-      if (!f) return;
+
+      const file = input.files && input.files[0];
+
+      if (!file) {
+        if (filenameEl) {
+          const emptyText = filenameEl.dataset.empty || 'No file selected';
+          filenameEl.textContent = emptyText;
+        }
+        return;
+      }
+
+      if (filenameEl) {
+        filenameEl.textContent = file.name;
+      }
 
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = document.createElement('img');
         img.src = e.target.result;
-        img.alt = f.name || inputId;
+        img.alt = file.name || inputId;
         preview.appendChild(img);
       };
-      reader.readAsDataURL(f);
+      reader.readAsDataURL(file);
     });
   }
 
@@ -322,10 +368,10 @@
   const btnLocate   = document.getElementById('btnLocate');
   const locSpinner  = document.getElementById('locSpinner');
   const locStatus   = document.getElementById('locStatus');
-  const latField    = document.getElementById('lat');          // admin: visible, driver: hidden
-  const lonField    = document.getElementById('lon');          // admin: visible, driver: hidden
-  const latDisplay  = document.getElementById('lat_display');  // only exists for drivers
-  const lonDisplay  = document.getElementById('lon_display');  // only exists for drivers
+  const latField    = document.getElementById('lat');
+  const lonField    = document.getElementById('lon');
+  const latDisplay  = document.getElementById('lat_display');
+  const lonDisplay  = document.getElementById('lon_display');
 
   function setLocStatus(msg){ if (locStatus) locStatus.textContent = msg || ''; }
   function setLoading(loading){
@@ -340,7 +386,10 @@
 
   function getPosition(options){
     return new Promise((resolve, reject) => {
-      if (!('geolocation' in navigator)) { reject(new Error('Geolocation is not supported by this browser.')); return; }
+      if (!('geolocation' in navigator)) {
+        reject(new Error('Geolocation is not supported by this browser.'));
+        return;
+      }
       navigator.geolocation.getCurrentPosition(resolve, reject, options);
     });
   }

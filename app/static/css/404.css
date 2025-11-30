@@ -1,0 +1,11 @@
+/* 404 page layout */
+
+.not-found-inner {
+  max-width: 420px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.not-found-actions {
+  margin-top: .75rem;
+}

@@ -11,7 +11,7 @@ History page:
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -72,6 +72,46 @@ def _user_label(u: User) -> str:
     return getattr(u, "full_name", None) or u.login
 
 
+def _compute_quick_range(
+    quick_range: Optional[str],
+) -> tuple[Optional[date], Optional[date]]:
+    """
+    Map a quick_range string (today / yesterday / this_week / last_week / tomorrow)
+    to a (date_from, date_to) pair. Returns (None, None) if unknown.
+    """
+    if not quick_range:
+        return None, None
+
+    today = date.today()
+
+    if quick_range == "today":
+        return today, today
+
+    if quick_range == "tomorrow":
+        t = today + timedelta(days=1)
+        return t, t
+
+    if quick_range == "yesterday":
+        y = today - timedelta(days=1)
+        return y, y
+
+    if quick_range == "this_week":
+        # Monday as first day of week
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+        return start, end
+
+    if quick_range == "last_week":
+        # Previous week Monday–Sunday
+        this_monday = today - timedelta(days=today.weekday())
+        end = this_monday - timedelta(days=1)
+        start = end - timedelta(days=6)
+        return start, end
+
+    # Fallback: unknown preset
+    return None, None
+
+
 # ------------------------------ Root redirect ------------------------------
 @router.get("/", include_in_schema=False)
 def root_redirect(
@@ -87,8 +127,8 @@ def root_redirect(
     Note: if user is not authenticated, get_current_user will raise 401.
     Your global exception handler should redirect 401 to /login.
     """
-    # if user.role == UserRole.admin:
-    #     return RedirectResponse(url="/history", status_code=303)
+    if user.role == UserRole.admin:
+        return RedirectResponse(url="/history", status_code=303)
     return RedirectResponse(url="/tasks", status_code=303)
 
 
@@ -203,6 +243,7 @@ def history_page(
     driver_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    quick_range: Optional[str] = Query(None),  # <--- NEW
 ):
     """
     Render pickup history.
@@ -214,6 +255,8 @@ def history_page(
     - Access control:
         * Admins see all pickups (with filters).
         * Non-admins see only their own pickups (Pickup.user_id == current user).
+    - New: quick_range presets (today / yesterday / this_week / last_week / tomorrow).
+      If quick_range is set and no manual dates are given, it will define date_from/date_to.
     """
 
     # 1) Parse filters from raw query strings
@@ -222,6 +265,14 @@ def history_page(
     did = _parse_int(driver_id)
     dfrom = _parse_date(date_from)
     dto = _parse_date(date_to)
+
+    # 1a) Apply quick_range → date_from/date_to if user didn't specify dates manually
+    if not dfrom and not dto and quick_range:
+        qr_from, qr_to = _compute_quick_range(quick_range)
+        if qr_from:
+            dfrom = qr_from
+        if qr_to:
+            dto = qr_to
 
     # Non-admin users are not allowed to query arbitrary driver_id
     # They always see only their own pickups.
@@ -366,7 +417,17 @@ def history_page(
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
     users = session.exec(sm_select(User).order_by(User.login)).all()
 
-    # 9) Render template
+    # 9) Prepare normalized strings for template
+    active_filters = {
+        "region_id": str(rid) if rid is not None else "",
+        "pharmacy_id": str(pid) if pid is not None else "",
+        "driver_id": str(did) if (did is not None and is_admin) else "",
+        "date_from": dfrom.isoformat() if dfrom else "",
+        "date_to": dto.isoformat() if dto else "",
+        "quick_range": quick_range or "",
+    }
+
+    # 10) Render template
     return templates.TemplateResponse(
         "history.html",
         {
@@ -378,14 +439,7 @@ def history_page(
             "pharmacies": pharmacies,
             "users": users,
             "warnings": warnings,
-            "active_filters": {
-                "region_id": region_id or "",
-                "pharmacy_id": pharmacy_id or "",
-                # driver filter используется только в UI админа
-                "driver_id": driver_id if is_admin else "",
-                "date_from": date_from or "",
-                "date_to": date_to or "",
-            },
+            "active_filters": active_filters,
         },
     )
 

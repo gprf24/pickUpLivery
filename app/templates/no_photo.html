@@ -2,13 +2,17 @@
 {% block title %}No Photo · PickUp Livery{% endblock %}
 {% block content %}
 
-<section class="card center" style="min-height:50vh">
-  <div style="text-align:center">
-    <h2 class="gradient-text" style="margin-bottom:.25rem">No Photo Available</h2>
-    <p class="lead">This pickup (ID {{ pickup_id }}) has no photo attached in the database.</p>
-    <p style="margin-top: 1rem">
-      <a href="/history" class="btn btn-primary">← Back to history</a>
-    </p>
+<section class="page-hero">
+  <h2 class="page-title">No photo available</h2>
+  <p class="lead">This pickup (ID {{ pickup_id }}) has no photo attached in the database.</p>
+</section>
+
+<section class="card no-photo-card">
+  <p>
+    You can go back to the history list and open another pickup.
+  </p>
+  <div class="form-actions no-photo-actions">
+    <a href="/history" class="btn btn-primary">← Back to history</a>
   </div>
 </section>
 

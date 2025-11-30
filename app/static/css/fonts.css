@@ -1,0 +1,6 @@
+/* Fonts module.
+   This example uses Inter from Google Fonts.
+   If you later add local .woff files, you can add @font-face rules here.
+*/
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");

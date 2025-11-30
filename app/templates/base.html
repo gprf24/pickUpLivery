@@ -1,60 +1,213 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>
-      {% block title %}
-        PickUp Livery
-      {% endblock %}
+      {% block title %}PickUp Livery{% endblock %}
     </title>
+
     <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="/static/app.js"></script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/favicon/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/static/favicon/favicon-96x96.png" />
+    <link rel="shortcut icon" href="/static/favicon/favicon.ico" />
+
+    <!-- Apple Touch Icon -->
+    <link rel="apple-touch-icon" href="/static/favicon/apple-touch-icon.png" />
+
+    <!-- Android / PWA Icons -->
+    <link rel="manifest" href="/static/favicon/site.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/favicon/web-app-manifest-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/favicon/web-app-manifest-512x512.png" />
   </head>
+
+  {% from 'partials/icons.html' import icon %}
+
   <body>
-    <div class="page">
-      <!-- grid wrapper for sticky footer -->
 
-      <header class="site-header">
-        <div class="container header-inner">
-          <a class="brand" href="/"><span class="gradient-text">PickUp Livery</span> </a>
-          <nav class="nav">
-            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Tasks</a>
-            <a href="/history" class="{% if request.url.path.startswith('/history') %}active{% endif %}">History</a>
+    {# ===== Inline SVG sprite: MUST be inside <body>, before we call icon() ===== #}
+    {% include 'partials/icons-sprite.html' %}
 
-            {% if user and user.role == 'admin' %}
-              <a href="/admin" class="{% if request.url.path.startswith('/admin') %}active{% endif %}">Admin</a>
-            {% endif %}
+    {# ===================== ROLE-AWARE HOME URL ===================== #}
+    {% set home_url = '/login' %}
+    {% if user %}
+      {% if user.role == 'admin' %}
+        {% set home_url = '/history' %}
+      {% else %}
+        {% set home_url = '/tasks' %}
+      {% endif %}
+    {% endif %}
+
+    <div class="layout">
+
+      <!-- ========== SIDEBAR (desktop) ========== -->
+      <aside class="sidebar">
+        <div class="sidebar-logo">
+          <a class="sidebar-brand" href="{{ home_url }}" aria-label="PickUp Livery">
+            <img src="/static/img/logo.svg" alt="Logo" class="brand-icon-svg" />
+          </a>
+        </div>
+
+        <nav class="sidebar-nav">
+          <!-- Tasks -->
+          <a href="/tasks"
+            class="sidebar-link has-tooltip
+                   {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}"
+            data-tooltip="Tasks">
+            <span class="sidebar-icon">{{ icon('tasks') }}</span>
+          </a>
+
+          <hr class="sidebar-divider" />
+
+          <!-- History -->
+          <a href="/history"
+            class="sidebar-link has-tooltip
+                   {% if request.url.path.startswith('/history') %}is-active{% endif %}"
+            data-tooltip="History">
+            <span class="sidebar-icon">{{ icon('history') }}</span>
+          </a>
+
+          {% if user and user.role == 'admin' %}
+            <hr class="sidebar-divider" />
+
+            <!-- Admin -->
+            <a href="/admin"
+              class="sidebar-link has-tooltip
+                     {% if request.url.path.startswith('/admin') %}is-active{% endif %}"
+              data-tooltip="Admin">
+              <span class="sidebar-icon">{{ icon('admin') }}</span>
+            </a>
+          {% endif %}
+        </nav>
+
+        <div class="sidebar-bottom">
+          <button type="button" class="icon-btn has-tooltip" data-toggle-theme aria-label="Toggle theme"
+            data-tooltip="Toggle theme">
+            {{ icon('theme') }}
+          </button>
+
+          <hr class="sidebar-divider" />
+
+          {% if user %}
+            <form method="get" action="/logout">
+              <button class="icon-btn has-tooltip" type="submit" data-tooltip="Logout">
+                {{ icon('logout') }}
+              </button>
+            </form>
+          {% else %}
+            <a href="/login" class="icon-btn has-tooltip" data-tooltip="Login">
+              {{ icon('login') }}
+            </a>
+          {% endif %}
+        </div>
+      </aside>
+
+      <!-- ========== MAIN COLUMN ========== -->
+      <div class="layout-main">
+
+        <!-- MOBILE HEADER -->
+        <header class="mobile-header">
+          <button class="icon-btn mobile-burger" type="button" data-toggle-menu aria-label="Open navigation">
+            {{ icon('menu') }}
+          </button>
+
+          <a href="{{ home_url }}" class="mobile-brand">
+            <img src="/static/img/logo.svg" alt="Logo" class="brand-icon-svg" />
+            <span class="gradient-text">PickUp Livery</span>
+          </a>
+
+          <div class="mobile-header-right">
+            <button type="button" class="icon-btn" data-toggle-theme aria-label="Toggle theme" data-tooltip="Toggle theme">
+              {{ icon('theme') }}
+            </button>
 
             {% if user %}
-              <span class="nav-user">♥ {{ user.full_name or user.login }}</span>
-              <a class="btn btn-secondary" href="/logout">Logout</a>
+              <span class="mobile-user">♥ {{ user.full_name or user.login }}</span>
             {% else %}
-              <a class="btn btn-primary" href="/login">Login</a>
+              <a class="btn btn-secondary btn-small" href="/login">Login</a>
             {% endif %}
-          </nav>
-        </div>
-      </header>
+          </div>
+        </header>
 
-      <main class="container site-main">
-        {% block content %}
-        {% endblock %}
-      </main>
+        <!-- MOBILE MENU OVERLAY -->
+        <nav class="mobile-menu" id="mobileMenu">
+          <div class="mobile-menu-inner">
 
-      <footer class="site-footer">
-        <div class="container">
-          <small>© <span id="year"></span> PickUp Livery</small>
-        </div>
-      </footer>
+            <div class="mobile-menu-header">
+              <span class="mobile-logo">PickUp Livery</span>
+              <button class="icon-btn" type="button" data-toggle-menu aria-label="Close navigation">
+                {{ icon('close') }}
+              </button>
+            </div>
+
+            <div class="mobile-menu-links">
+              <a href="/tasks"
+                class="mobile-link
+                       {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}">
+                {{ icon('tasks', 'icon-inline') }} Tasks
+              </a>
+
+              <a href="/history"
+                class="mobile-link
+                       {% if request.url.path.startswith('/history') %}is-active{% endif %}">
+                {{ icon('history', 'icon-inline') }} History
+              </a>
+
+              {% if user and user.role == 'admin' %}
+                <a href="/admin"
+                  class="mobile-link
+                         {% if request.url.path.startswith('/admin') %}is-active{% endif %}">
+                  {{ icon('admin', 'icon-inline') }} Admin
+                </a>
+              {% endif %}
+            </div>
+
+            <div class="mobile-menu-footer">
+              <button type="button" class="btn btn-ghost" data-toggle-theme>
+                {{ icon('theme', 'icon-inline') }} Toggle theme
+              </button>
+
+              {% if user %}
+                <form method="get" action="/logout">
+                  <button class="btn btn-secondary" type="submit">
+                    {{ icon('logout', 'icon-inline') }} Logout
+                  </button>
+                </form>
+              {% else %}
+                <a class="btn btn-primary" href="/login">
+                  {{ icon('login', 'icon-inline') }} Login
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        </nav>
+
+        <!-- MAIN CONTENT -->
+        <main class="site-main container">
+          {% block content %}{% endblock %}
+        </main>
+
+        <footer class="site-footer">
+          <div class="container">
+            <small>© <span id="year"></span> PickUp Livery</small>
+          </div>
+        </footer>
+
+      </div>
     </div>
-    <!-- /.page -->
 
-    {% block scripts %}
-    {% endblock %}
+    {% block scripts %}{% endblock %}
+
+    <!-- Dynamic year -->
     <script>
-      ;(function () {
-        var y = document.getElementById('year')
-        if (y) y.textContent = new Date().getFullYear()
-      })()
+      (function () {
+        var y = document.getElementById('year');
+        if (y) y.textContent = new Date().getFullYear();
+      })();
     </script>
+
   </body>
 </html>

@@ -1,0 +1,339 @@
+/* ========= LAYOUT: SIDEBAR + MAIN + MOBILE HEADER ========= */
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+}
+
+/* Sidebar (desktop, narrow icon-only sidebar) */
+
+.sidebar {
+  width: 72px;
+  padding: 16px 10px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar-logo {
+  margin-bottom: 4px;
+}
+
+/* .sidebar-brand {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e7edfa;
+  color: #7d858c;
+  font-weight: 800;
+  font-size: 18px;
+} */
+.brand-icon-svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+.brand-icon-svg:hover {
+  transform: translateY(-1px);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  flex: 1 1 auto;
+}
+
+.sidebar-link {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sidebar-link);
+  background: transparent;
+  border: 2px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+.sidebar-icon {
+  font-size: 20px;
+}
+
+.sidebar-link:hover {
+  background: var(--sidebar-link-hover-bg);
+  color: #17181a;
+  transform: translateY(-1px);
+}
+
+.sidebar-link.is-active {
+  background: #f9fafb;
+  color: var(--brandred);
+  border-color: #282b2e;
+}
+
+.sidebar-divider {
+  border: 0;
+  border-top: 1px solid #7d858c;
+  margin: 6px 12px;
+  opacity: 0.5;
+}
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.has-tooltip {
+  position: relative;
+}
+
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f9fafb;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.4);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+.has-tooltip:hover::after {
+  opacity: 1;
+}
+
+/* Main column */
+
+.layout-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mobile header (visible only on small screens) */
+
+.mobile-header {
+  height: 52px;
+  padding: 0 14px;
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.mobile-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-user {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Mobile menu overlay */
+
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(10px);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 40;
+}
+
+.mobile-menu.is-open {
+  display: flex;
+}
+
+.mobile-menu-inner {
+  margin-top: 12px;
+  width: min(420px, 100% - 24px);
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.mobile-logo {
+  font-weight: 600;
+}
+
+.mobile-menu-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mobile-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.mobile-link:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.mobile-link.is-active {
+  background: rgba(148, 163, 184, 0.22);
+  font-weight: 600;
+}
+
+.mobile-menu-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Container & footer */
+
+.container {
+  width: 100%;
+  min-width: 200px;
+  margin-inline: auto;
+  padding: 16px 18px 24px;
+}
+
+.site-main {
+  flex: 1 1 auto;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elev);
+  text-align: right;
+}
+
+.site-footer .container {
+  padding-block: 12px;
+}
+
+/* Layout responsiveness (sidebar → mobile header) */
+
+@media (max-width: 960px) {
+  .sidebar {
+    display: none;
+  }
+
+  .mobile-header {
+    display: flex;
+  }
+
+  .container {
+    padding-inline: 12px;
+  }
+}
+
+/* Generic SVG icon */
+.icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-block;
+  vertical-align: middle;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+/* Slightly smaller inline icons */
+.icon-inline {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.4rem;
+}
+
+/* Icons inside round buttons */
+.icon-btn .icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+
+/* ================================================================== */
+/* ========= HARDEN SIDEBAR & MOBILE LINKS AGAINST BROWSER STATES === */
+/* ================================================================== */
+
+.sidebar-link,
+.sidebar-link:link,
+.sidebar-link:visited,
+.sidebar-link:focus,
+.sidebar-link:active {
+  color: var(--sidebar-link) !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.sidebar-link.is-active,
+.sidebar-link.is-active:link,
+.sidebar-link.is-active:visited,
+.sidebar-link.is-active:focus,
+.sidebar-link.is-active:active {
+  color: var(--brandred) !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.mobile-link,
+.mobile-link:link,
+.mobile-link:visited,
+.mobile-link:focus,
+.mobile-link:active {
+  color: inherit !important;
+  opacity: 1 !important;
+  filter: none !important;
+}

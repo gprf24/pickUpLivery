@@ -1,0 +1,48 @@
+/* Global settings page */
+.settings-card {
+  margin-top: 1.1rem;
+  max-width: 720px;
+}
+
+/* Divider between setting blocks */
+.setting-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--sidebar-border);
+  margin: 0.8rem 0;
+  opacity: 0.6;
+  border-radius: 2px;
+}
+
+/* Checkbox row: override .form-label layout */
+.form-label.checkbox-inline {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+/* Checkbox itself */
+.form-label.checkbox-inline input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 0.25rem;      /* чуть вниз, чтобы совпало с первой строкой текста */
+  flex-shrink: 0;
+}
+
+/* Text column to the right of checkbox */
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Main title text */
+.checkbox-title {
+  font-weight: 500;
+}
+
+/* Description under title */
+.checkbox-text small {
+  line-height: 1.35;
+}

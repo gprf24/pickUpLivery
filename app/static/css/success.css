@@ -1,0 +1,11 @@
+/* Pickup saved confirmation */
+
+.success-card {
+  max-width: 520px;
+  margin-top: 1rem;
+}
+
+.success-actions {
+  margin-top: 1rem;
+  gap: .5rem;
+}

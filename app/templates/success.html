@@ -2,13 +2,19 @@
 {% block title %}Saved · PickUp Livery{% endblock %}
 {% block content %}
 
-<div class="card">
-  <h2 class="page-title">Pickup Saved <span class="badge ok">✅</span></h2>
-  <p class="lead">Pharmacy ID: <strong>{{ pharmacy_id }}</strong></p>
-  <div class="form-actions" style="margin-top:1rem;">
+<section class="page-hero">
+  <h2 class="page-title">Pickup saved</h2>
+  <p class="lead">
+    Pharmacy ID: <strong>{{ pharmacy_id }}</strong>
+  </p>
+</section>
+
+<section class="card success-card">
+  <p>Your pickup was saved successfully.</p>
+  <div class="form-actions success-actions">
     <a href="/" class="btn btn-primary">Back to tasks</a>
-    <a href="/history" class="btn btn-secondary">View History</a>
+    <a href="/history" class="btn btn-secondary">View history</a>
   </div>
-</div>
+</section>
 
 {% endblock %}

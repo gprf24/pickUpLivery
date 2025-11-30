@@ -1,0 +1,10 @@
+/* No-photo info page */
+
+.no-photo-card {
+  max-width: 520px;
+  margin-top: 1rem;
+}
+
+.no-photo-actions {
+  margin-top: .75rem;
+}
