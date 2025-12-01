@@ -17,9 +17,7 @@
   <!--======= STATISTICS =======-->
   <details class="g-section" data-section-id="admin-stats" open>
     <summary>
-      <h2>
-        📊 Statistics
-      </h2>
+      <h2>📊 Statistics</h2>
     </summary>
     <ul class="g-badges">
       <li class="badge">Users: {{ stats.counts.users or 0 }}</li>
@@ -38,30 +36,50 @@
       <h2>👤 Users ({{ stats.counts.users or 0 }})</h2>
     </summary>
 
-    <!-- Create user (full reload is OK here) -->
+    <!-- Create user -->
     <div class="g-card">
       <h3 class="g-subtitle">Create user</h3>
+
       <form action="/admin/users/create" method="post" class="form-grid">
-        <label class="form-label">Login
+        <label class="form-label">
+          Login
           <input type="text" name="login" required class="form-input">
-        </label>
-        <label class="form-label">Password
-          <input type="password" name="password" required minlength="6" class="form-input">
-        </label>
-        <label class="form-label">Role
-          <select name="role" class="form-input">
-            <option value="driver" selected>driver</option>
-            <option value="admin">admin</option>
-          </select>
         </label>
 
         <label class="form-label">
-          Require GPS location
-          <input type="checkbox" name="require_pickup_location" value="1">
-          <small class="muted">
-            If checked, this user must always send location
-            (overrides global GPS setting).
-          </small>
+          Password
+          <input type="password" name="password" required minlength="6" class="form-input">
+        </label>
+
+        <label class="form-label">
+          Role
+          <div class="chip-dropdown-wrapper role-dropdown-wrapper">
+            <button type="button" class="chip chip-dropdown">
+              <span class="chip-main-text">Driver</span>
+              <span class="chip-caret"></span>
+            </button>
+
+            <div class="dropdown-menu">
+              <button type="button" class="dropdown-item is-active" data-value="driver">
+                Driver
+              </button>
+              <button type="button" class="dropdown-item" data-value="admin">
+                Admin
+              </button>
+            </div>
+
+            <input type="hidden" name="role" value="driver">
+          </div>
+        </label>
+
+        <label class="form-label checkbox-inline">
+          <input type="checkbox" name="require_pickup_location" value="1" checked>
+          <div class="checkbox-text">
+            <span class="checkbox-title">Require GPS location</span>
+            <small class="muted">
+              If checked → always require GPS. If unchecked → inherit global setting.
+            </small>
+          </div>
         </label>
 
         <div class="form-actions">
@@ -73,6 +91,7 @@
     <!-- User list -->
     <div class="g-card">
       <h3 class="g-subtitle">Existing users</h3>
+
       <div class="table-wrap">
         <table>
           <thead>
@@ -85,98 +104,148 @@
               <th>Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {% for u in users %}
-            <tr>
+            <tr data-user-id="{{ u.id }}">
               <td>{{ u.id }}</td>
               <td>{{ u.login }}</td>
-              <td>{{ u.role }}</td>
-              <td>{{ 'yes' if u.is_active else 'no' }}</td>
+
               <td>
-                <div style="display:flex;flex-direction:column;gap:.25rem;">
-                  <div>
-                    {% if u.require_pickup_location is none %}
-                      <span class="badge">inherit</span>
-                    {% elif u.require_pickup_location %}
-                      <span class="badge ok">yes</span>
-                    {% else %}
-                      <span class="badge warn">no</span>
-                    {% endif %}
-                  </div>
-                  <!-- Per-user GPS mode (AJAX) -->
+                {% if u.role == 'admin' %}Admin{% elif u.role == 'driver' %}Driver{% else %}{{ u.role }}{% endif %}
+              </td>
+
+              <!-- Active pill -->
+              <td>
+                {% if u.is_active %}
+                  <span class="status-pill status-ok">Yes</span>
+                {% else %}
+                  <span class="status-pill">No</span>
+                {% endif %}
+              </td>
+
+              <!-- GPS MODE -->
+              <td>
+                <div class="user-gps-block">
+
+                  {% set current_gps_mode =
+                      'inherit' if u.require_pickup_location is none
+                      else 'require' if u.require_pickup_location
+                      else 'no'
+                  %}
+
                   <form
                     action="/admin/users/{{ u.id }}/gps"
                     method="post"
-                    class="form-grid js-ajax-form"
-                    style="grid-template-columns:1fr auto;gap:.35rem;"
+                    class="gps-inline-form js-ajax-form"
+                    data-admin-action="user-gps-update"
                   >
-                    <select name="gps_mode" class="form-input" required>
-                      <option value="inherit"
-                        {% if u.require_pickup_location is none %}selected{% endif %}>
-                        Inherit global
-                      </option>
-                      <option value="require"
-                        {% if u.require_pickup_location is true %}selected{% endif %}>
-                        Require GPS
-                      </option>
-                      <option value="no"
-                        {% if u.require_pickup_location is false %}selected{% endif %}>
-                        GPS not required
-                      </option>
-                    </select>
-                    <button type="submit" class="btn btn-secondary">Update</button>
+                    <div class="chip-dropdown-wrapper gps-mode-wrapper">
+                      <button type="button" class="chip chip-dropdown chip-gps">
+                        <span class="chip-main-text">
+                          {% if current_gps_mode == 'inherit' %}
+                            Inherit global
+                          {% elif current_gps_mode == 'require' %}
+                            Require GPS
+                          {% else %}
+                            GPS not required
+                          {% endif %}
+                        </span>
+                        <span class="chip-caret"></span>
+                      </button>
+
+                      <div class="dropdown-menu">
+                        <button type="button"
+                                class="dropdown-item {% if current_gps_mode == 'inherit' %}is-active{% endif %}"
+                                data-value="inherit">
+                          Inherit global
+                        </button>
+                        <button type="button"
+                                class="dropdown-item {% if current_gps_mode == 'require' %}is-active{% endif %}"
+                                data-value="require">
+                          Require GPS
+                        </button>
+                        <button type="button"
+                                class="dropdown-item {% if current_gps_mode == 'no' %}is-active{% endif %}"
+                                data-value="no">
+                          GPS not required
+                        </button>
+                      </div>
+
+                      <input type="hidden" name="gps_mode" value="{{ current_gps_mode }}">
+                    </div>
+
+                    <button type="submit" class="btn btn-secondary btn-sm-inline">Update</button>
                   </form>
                 </div>
               </td>
-              <td>
-                <div class="form-actions" style="flex-direction:column;gap:.35rem;">
 
-                  <!-- Toggle active (AJAX) -->
-                  <form action="/admin/users/{{ u.id }}/toggle" method="post" class="js-ajax-form">
+              <!-- ACTIONS -->
+              <td>
+                <div class="form-actions form-actions-row">
+
+                  <!-- Change password -->
+                  <form
+                    action="/admin/users/{{ u.id }}/password"
+                    method="post"
+                    class="form-grid js-ajax-form"
+                    data-admin-action="user-password-change"
+                  >
+                    <input type="password" name="new_password" placeholder="new password" minlength="6" required class="form-input">
+                    <button type="submit" class="btn btn-primary">Set</button>
+                  </form>
+
+                  <!-- Toggle active -->
+                  <form
+                    action="/admin/users/{{ u.id }}/toggle-active"
+                    method="post"
+                    class="js-ajax-form"
+                    data-admin-action="user-toggle-active"
+                  >
                     <button type="submit" class="btn btn-secondary">
                       {{ 'Deactivate' if u.is_active else 'Activate' }}
                     </button>
                   </form>
 
-                  <!-- Change password (AJAX) -->
+                  <hr class="newdevider" />
+
+                  <!-- Delete user -->
                   <form
-                    action="/admin/users/{{ u.id }}/password"
+                    action="/admin/users/{{ u.id }}/delete"
                     method="post"
-                    class="form-grid js-ajax-form"
-                    style="grid-template-columns:1fr auto;gap:.35rem;"
+                    class="js-ajax-form"
+                    data-admin-action="user-delete"
+                    onsubmit="return confirm('Delete user {{ u.login }}? This cannot be undone.');"
                   >
-                    <input
-                      type="password"
-                      name="new_password"
-                      placeholder="new password"
-                      minlength="6"
-                      required
-                      class="form-input"
-                    >
-                    <button type="submit" class="btn btn-primary">Set</button>
+                    <button type="submit" class="btn btn-primary btn-danger">Delete</button>
                   </form>
+
                 </div>
               </td>
             </tr>
             {% endfor %}
           </tbody>
+
         </table>
       </div>
     </div>
   </details>
 
-  <!--======= REGIONS =======-->
+  <!--======== REGIONS ========-->
   <details class="g-section" data-section-id="admin-regions">
     <summary>
       <h2>🗺️ Regions ({{ stats.counts.regions or 0 }})</h2>
     </summary>
+
     <div class="g-card">
       <h3 class="g-subtitle">Create region</h3>
-      <!-- Create region (full reload is OK) -->
+
       <form action="/admin/regions/create" method="post" class="form-grid">
-        <label class="form-label">Name
+        <label class="form-label">
+          Name
           <input type="text" name="name" required class="form-input">
         </label>
+
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">Create</button>
         </div>
@@ -185,38 +254,72 @@
 
     <div class="g-card">
       <h3 class="g-subtitle">All regions</h3>
+
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID</th><th>Name</th><th>Active</th><th>Actions</th></tr>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Active</th>
+              <th>Actions</th>
+            </tr>
           </thead>
+
           <tbody>
             {% for r in regions %}
-            <tr>
+            <tr data-region-id="{{ r.id }}">
               <td>{{ r.id }}</td>
               <td>{{ r.name }}</td>
-              <td>{{ 'yes' if r.is_active else 'no' }}</td>
+
               <td>
-                <!-- Toggle region (AJAX) -->
-                <form
-                  action="/admin/regions/{{ r.id }}/toggle"
-                  method="post"
-                  class="form-actions js-ajax-form"
-                >
-                  <button type="submit" class="btn btn-secondary">
-                    {{ 'Deactivate' if r.is_active else 'Activate' }}
-                  </button>
-                </form>
+                {% if r.is_active %}
+                  <span class="status-pill status-ok">Yes</span>
+                {% else %}
+                  <span class="status-pill">No</span>
+                {% endif %}
+              </td>
+
+              <td>
+                <div class="form-actions form-actions-row">
+
+                  <!-- toggle -->
+                  <form
+                    action="/admin/regions/{{ r.id }}/toggle"
+                    method="post"
+                    class="js-ajax-form"
+                    data-admin-action="region-toggle-active"
+                  >
+                    <button type="submit" class="btn btn-secondary">
+                      {{ 'Deactivate' if r.is_active else 'Activate' }}
+                    </button>
+                  </form>
+
+                  <hr class="newdevider" />
+
+                  <!-- delete -->
+                  <form
+                    action="/admin/regions/{{ r.id }}/delete"
+                    method="post"
+                    class="js-ajax-form"
+                    data-admin-action="region-delete"
+                    onsubmit="return confirm('Delete region {{ r.name }}? This cannot be undone.');"
+                  >
+                    <button type="submit" class="btn btn-primary btn-danger">Delete</button>
+                  </form>
+
+                </div>
               </td>
             </tr>
             {% endfor %}
           </tbody>
+
         </table>
       </div>
     </div>
   </details>
 
-  <!--======= PHARMACIES =======-->
+  <!--======== PHARMACIES ========-->
   <details class="g-section" data-section-id="admin-pharmacies">
     <summary>
       <h2>🏥 Pharmacies ({{ stats.counts.pharmacies or 0 }})</h2>
@@ -224,21 +327,43 @@
 
     <div class="g-card">
       <h3 class="g-subtitle">Create pharmacy</h3>
-      <!-- Create pharmacy (full reload is OK) -->
+
+      {% set default_region_id = regions[0].id if regions else '' %}
+      {% set default_region_name = regions[0].name if regions else 'No regions' %}
+
       <form action="/admin/pharmacies/create" method="post" class="form-grid">
-        <label class="form-label">Name
+
+        <label class="form-label">
+          Name
           <input type="text" name="name" required class="form-input">
         </label>
-        <label class="form-label">Region
-          <select name="region_id" required class="form-input">
-            {% for r in regions %}
-              <option value="{{ r.id }}">{{ r.name }}</option>
-            {% endfor %}
-          </select>
+
+        <label class="form-label">
+          Region
+          <div class="chip-dropdown-wrapper region-dropdown-wrapper">
+            <button type="button" class="chip chip-dropdown">
+              <span class="chip-main-text">{{ default_region_name }}</span>
+              <span class="chip-caret"></span>
+            </button>
+
+            <div class="dropdown-menu" style="max-width: 220px;">
+              {% for r in regions %}
+              <button type="button" class="dropdown-item {% if loop.first %}is-active{% endif %}"
+                      data-value="{{ r.id }}">
+                {{ r.name }}
+              </button>
+              {% endfor %}
+            </div>
+
+            <input type="hidden" name="region_id" value="{{ default_region_id }}">
+          </div>
         </label>
-        <label class="form-label">Address
-          <input type="text" name="address" placeholder="optional" class="form-input">
+
+        <label class="form-label">
+          Address
+          <input type="text" name="address" class="form-input" placeholder="optional">
         </label>
+
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">Create</button>
         </div>
@@ -247,6 +372,7 @@
 
     <div class="g-card">
       <h3 class="g-subtitle">All pharmacies</h3>
+
       <div class="table-wrap">
         <table>
           <thead>
@@ -259,67 +385,152 @@
               <th>Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {% for p in pharmacies %}
-            <tr>
+            <tr data-pharmacy-id="{{ p.id }}">
               <td>{{ p.id }}</td>
               <td>{{ p.name }}</td>
-              <td>{{ region_by_id.get(p.region_id).name if region_by_id.get(p.region_id) else '-' }}</td>
-              <td>{{ 'yes' if p.is_active else 'no' }}</td>
               <td>
-                <ul class="g-ul">
-                  {% for uid in assignments.get(p.id, []) %}
-                    {% set usr = user_by_id.get(uid) %}
-                    {% if usr %}
-                      <li class="g-li">
-                        <span>{{ usr.login }}</span>
-                        <!-- Unassign user (AJAX) -->
-                        <form
-                          action="/admin/pharmacies/{{ p.id }}/unassign"
-                          method="post"
-                          class="js-ajax-form"
-                        >
-                          <input type="hidden" name="user_id" value="{{ usr.id }}">
-                          <button type="submit" class="btn btn-secondary" title="Unassign">×</button>
-                        </form>
-                      </li>
-                    {% endif %}
-                  {% endfor %}
-                </ul>
-
-                <!-- Assign user (AJAX) -->
-                <form
-                  action="/admin/pharmacies/{{ p.id }}/assign"
-                  method="post"
-                  class="form-grid g-assign js-ajax-form"
-                >
-                  <select name="user_id" required class="form-input">
-                    {% for u in users %}
-                      <option value="{{ u.id }}">{{ u.login }}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="submit" class="btn btn-primary">Assign</button>
-                </form>
+                {{ region_by_id.get(p.region_id).name if region_by_id.get(p.region_id) else '-' }}
               </td>
+
               <td>
-                <!-- Toggle pharmacy (AJAX) -->
-                <form
-                  action="/admin/pharmacies/{{ p.id }}/toggle"
-                  method="post"
-                  class="form-actions js-ajax-form"
-                >
-                  <button type="submit" class="btn btn-secondary">
-                    {{ 'Deactivate' if p.is_active else 'Activate' }}
-                  </button>
-                </form>
+                {% if p.is_active %}
+                  <span class="status-pill status-ok">Yes</span>
+                {% else %}
+                  <span class="status-pill">No</span>
+                {% endif %}
+              </td>
+
+              <td>
+                <div class="assigned-users-block">
+                  <div class="assigned-chips">
+                    {% for uid in assignments.get(p.id, []) %}
+                      {% set usr = user_by_id.get(uid) %}
+                      {% if usr %}
+                      <form
+                        action="/admin/pharmacies/{{ p.id }}/unassign"
+                        method="post"
+                        class="assigned-chip js-ajax-form"
+                        data-admin-action="pharmacy-unassign-user"
+                      >
+                        <input type="hidden" name="user_id" value="{{ usr.id }}">
+                        <span class="assigned-name">{{ usr.login }}</span>
+                        <button type="submit" class="assigned-remove">×</button>
+                      </form>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+
+                  <!-- assign -->
+                  {% set default_user = users[0] if users else None %}
+                  <form
+                    action="/admin/pharmacies/{{ p.id }}/assign"
+                    method="post"
+                    class="assign-inline-form js-ajax-form"
+                    data-admin-action="pharmacy-assign-user"
+                  >
+                    <div class="chip-dropdown-wrapper assign-user-wrapper">
+                      <button type="button" class="chip chip-dropdown">
+                        <span class="chip-main-text">
+                          {% if default_user %}{{ default_user.login }}{% else %}No users{% endif %}
+                        </span>
+                        <span class="chip-caret"></span>
+                      </button>
+
+                      <div class="dropdown-menu">
+                        {% for u in users %}
+                        <button type="button" class="dropdown-item {% if loop.first %}is-active{% endif %}"
+                                data-value="{{ u.id }}">
+                          {{ u.login }}
+                        </button>
+                        {% endfor %}
+                      </div>
+
+                      <input type="hidden" name="user_id"
+                             value="{{ default_user.id if default_user else '' }}">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-sm-inline">Assign</button>
+                  </form>
+                </div>
+              </td>
+
+              <td>
+                <div class="form-actions form-actions-column">
+
+                  <!-- toggle active -->
+                  <form
+                    action="/admin/pharmacies/{{ p.id }}/toggle"
+                    method="post"
+                    class="js-ajax-form"
+                    data-admin-action="pharmacy-toggle-active"
+                  >
+                    <button type="submit" class="btn btn-secondary">
+                      {{ 'Deactivate' if p.is_active else 'Activate' }}
+                    </button>
+                  </form>
+
+                  <hr class="newdevider" />
+
+                  <!-- delete -->
+                  <form
+                    action="/admin/pharmacies/{{ p.id }}/delete"
+                    method="post"
+                    class="js-ajax-form"
+                    data-admin-action="pharmacy-delete"
+                    onsubmit="return confirm('Delete pharmacy {{ p.name }}? This cannot be undone.');"
+                  >
+                    <button type="submit" class="btn btn-primary btn-danger">Delete</button>
+                  </form>
+
+                </div>
               </td>
             </tr>
             {% endfor %}
           </tbody>
+
         </table>
       </div>
     </div>
   </details>
 
 </section>
+
+<!-- Inline JS: chip dropdown -->
+<script>
+  document.addEventListener("click", function (event) {
+    const chip = event.target.closest(".chip-dropdown");
+    if (chip) {
+      const w = chip.closest(".chip-dropdown-wrapper");
+      w.classList.toggle("is-open");
+      return;
+    }
+
+    const item = event.target.closest(".chip-dropdown-wrapper .dropdown-item");
+    if (item) {
+      const w = item.closest(".chip-dropdown-wrapper");
+      const hidden = w.querySelector("input[type='hidden']");
+      const label = w.querySelector(".chip-main-text");
+
+      hidden.value = item.dataset.value;
+      label.textContent = item.textContent.trim();
+
+      w.querySelectorAll(".dropdown-item").forEach(b => {
+        b.classList.toggle("is-active", b === item);
+      });
+
+      w.classList.remove("is-open");
+      return;
+    }
+
+    if (!event.target.closest(".chip-dropdown-wrapper")) {
+      document
+        .querySelectorAll(".chip-dropdown-wrapper.is-open")
+        .forEach(w => w.classList.remove("is-open"));
+    }
+  });
+</script>
+
 {% endblock %}

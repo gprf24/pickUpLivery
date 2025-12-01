@@ -12,6 +12,7 @@
 <section class="card settings-card">
   <form method="post" action="/admin/settings" class="form-grid">
 
+    {# ----- MAX PICKUPS PER DAY ----- #}
     <label class="form-label">
       Max pickups per driver &amp; pharmacy per day
       <input
@@ -30,6 +31,7 @@
 
     <div class="setting-divider"></div>
 
+    {# ----- GLOBAL GPS REQUIREMENT ----- #}
     <label class="form-label checkbox-inline">
       <input
         type="checkbox"
@@ -48,6 +50,7 @@
 
     <div class="setting-divider"></div>
 
+    {# ----- SHOW HISTORY TO DRIVERS ----- #}
     <label class="form-label checkbox-inline">
       <input
         type="checkbox"
@@ -66,6 +69,7 @@
 
     <div class="setting-divider"></div>
 
+    {# ----- MIN REQUIRED PHOTOS ----- #}
     <label class="form-label">
       Minimal required photos per pickup
       <input
@@ -85,20 +89,40 @@
 
     <div class="setting-divider"></div>
 
+    {# ----- PHOTO SOURCE MODE (CHIP DROPDOWN) ----- #}
+    {% set current_mode = settings.photo_source_mode or 'camera_or_upload' %}
+
     <label class="form-label">
       Photo source mode
-      <select name="photo_source_mode" class="form-input">
-        <option value="camera_or_upload"
-          {% if settings.photo_source_mode == 'camera_or_upload' %}selected{% endif %}
-        >
-          Camera or upload from device
-        </option>
-        <option value="camera_only"
-          {% if settings.photo_source_mode == 'camera_only' %}selected{% endif %}
-        >
-          Prefer camera only (mobile hint)
-        </option>
-      </select>
+
+      <div class="chip-dropdown-wrapper photo-source-dropdown-wrapper">
+        <button type="button" class="chip chip-dropdown">
+          <span class="chip-main-text" style="min-width: 185px;">
+            {% if current_mode == 'camera_only' %}
+              Prefer camera only (mobile hint)
+            {% else %}
+              Camera or upload from device
+            {% endif %}
+          </span>
+          <span class="chip-caret"></span>
+        </button>
+
+        <div class="dropdown-menu" style="max-width: 220px;">
+          <button type="button"
+                  class="dropdown-item {% if current_mode == 'camera_or_upload' %}is-active{% endif %}"
+                  data-value="camera_or_upload">
+            Camera or upload from device
+          </button>
+          <button type="button"
+                  class="dropdown-item {% if current_mode == 'camera_only' %}is-active{% endif %}"
+                  data-value="camera_only">
+            Prefer camera only (mobile hint)
+          </button>
+        </div>
+
+        <input type="hidden" name="photo_source_mode" value="{{ current_mode }}">
+      </div>
+
       <small class="muted">
         “Camera only” is a best-effort hint using the <code>capture</code> attribute.
         It cannot fully forbid file uploads on all platforms.
@@ -112,4 +136,46 @@
 
   </form>
 </section>
+
+{# Inline JS for chip dropdowns, same поведение как на admin page #}
+<script>
+  document.addEventListener("click", function (event) {
+    const chip = event.target.closest(".chip-dropdown");
+    if (chip) {
+      const w = chip.closest(".chip-dropdown-wrapper");
+      if (w) {
+        w.classList.toggle("is-open");
+      }
+      return;
+    }
+
+    const item = event.target.closest(".chip-dropdown-wrapper .dropdown-item");
+    if (item) {
+      const w = item.closest(".chip-dropdown-wrapper");
+      if (!w) return;
+
+      const hidden = w.querySelector("input[type='hidden']");
+      const label = w.querySelector(".chip-main-text");
+
+      if (hidden) hidden.value = item.dataset.value;
+      if (label) label.textContent = item.textContent.trim();
+
+      w.querySelectorAll(".dropdown-item").forEach(function (b) {
+        b.classList.toggle("is-active", b === item);
+      });
+
+      w.classList.remove("is-open");
+      return;
+    }
+
+    if (!event.target.closest(".chip-dropdown-wrapper")) {
+      document
+        .querySelectorAll(".chip-dropdown-wrapper.is-open")
+        .forEach(function (w) {
+          w.classList.remove("is-open");
+        });
+    }
+  });
+</script>
+
 {% endblock %}

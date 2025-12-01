@@ -3,6 +3,7 @@
 .layout {
   min-height: 100vh;
   display: flex;
+  min-width: 220px;
 }
 
 /* Sidebar (desktop, narrow icon-only sidebar) */
@@ -89,7 +90,14 @@
   margin: 6px 12px;
   opacity: 0.5;
 }
-
+.newdevider{
+  width: 2px;
+  height: 31px;
+  background: var(--mutedtask); 
+  opacity: 0.3;
+  border: none;
+  margin: 0 .35rem;
+}
 .sidebar-bottom {
   display: flex;
   flex-direction: column;
@@ -249,6 +257,7 @@
   padding: 16px 18px 24px;
 }
 
+/* main area inside layout-main */
 .site-main {
   flex: 1 1 auto;
 }
@@ -262,6 +271,17 @@
 .site-footer .container {
   padding-block: 12px;
 }
+
+.site-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elev);
+  text-align: right;
+}
+
+.site-footer .container {
+  padding-block: 12px;
+}
+
 
 /* Layout responsiveness (sidebar → mobile header) */
 

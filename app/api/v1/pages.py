@@ -29,6 +29,7 @@ from sqlmodel import select as sm_select
 from app.core.deps import (
     get_app_settings,
     get_current_user,
+    get_current_user_optional,
     get_session,
     require_admin,
     templates,
@@ -138,12 +139,18 @@ def _compute_quick_range(
 def root_redirect(
     request: Request,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """
-    Simple redirect to the main tasks page.
-    """
-    return RedirectResponse(url="/tasks")
+    # Not logged in → go to login
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    # Admin → history
+    if user.role == "admin":
+        return RedirectResponse("/history", status_code=303)
+
+    # Driver → tasks
+    return RedirectResponse("/tasks", status_code=303)
 
 
 # ------------------------------ Tasks page ------------------------------

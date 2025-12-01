@@ -1,6 +1,5 @@
 /* ========= DESIGN TOKENS ========= */
 
-/* Fallback (dark) if data-theme is not set */
 :root {
     --bg: #0b0d10;
     --bg-elev: #111827;
@@ -28,7 +27,7 @@
     --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
 
-/* Light theme (default) */
+/* Light theme */
 html[data-theme="light"] {
     --bg: #f4f4f5;
     --bg-elev: #ffffff;
@@ -123,19 +122,203 @@ img {
     display: block;
 }
 
-/* Simple utility classes */
+/* Simple utilities */
 
 .muted {
     color: var(--muted);
 }
+
 .mutedtask {
     color: var(--mutedtask);
 }
+
 .link {
     color: var(--brand);
-    text-decoration: none;
 }
 
 .link:hover {
     text-decoration: underline;
+}
+
+/* Login: full width without sidebar */
+.layout-main-full {
+    margin-left: 0 !important;
+}
+
+/* ===== Admin toast notifications ===== */
+
+:root {
+  /* You can tweak these or map to your design tokens */
+  --admin-alert-inset: 1.5rem;
+  --admin-alert-duration: 4s;
+}
+
+/* Container stays fixed in the top-right */
+#admin-alert-container {
+  position: fixed;
+  top: var(--admin-alert-inset);
+  right: var(--admin-alert-inset);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Base card */
+.admin-alert {
+  --admin-alert-accent: #2563eb; /* default accent (info) */
+  --admin-alert-play-state: running;
+
+  position: relative;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+
+  min-width: 220px;
+  max-width: 360px;
+
+  padding: 1rem 1rem 0.9rem;
+  border-radius: 0.8rem;
+  background-color: #ffffff;
+  color: rgba(15, 23, 42, 0.9); /* slate-ish */
+
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+
+  overflow: hidden;
+
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+}
+
+/* Show animation state (JS adds .is-visible) */
+.admin-alert.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Pause countdown animation on hover */
+.admin-alert:hover {
+  --admin-alert-play-state: paused;
+}
+
+/* Top countdown bar */
+.admin-alert::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background-color: var(--admin-alert-accent);
+  transform-origin: left;
+  animation: admin-alert-countdown var(--admin-alert-duration) linear forwards;
+  animation-play-state: var(--admin-alert-play-state);
+}
+
+/* Icon circle */
+.admin-alert__icon {
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 999px;
+  background-color: var(--admin-alert-accent);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1.6rem 1.6rem;
+  margin-top: 0.1rem;
+}
+
+/* Body text wrapper */
+.admin-alert__body {
+  flex: 1 1 auto;
+}
+
+/* Header (title) */
+.admin-alert__header {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #020617;
+}
+
+/* Message text */
+.admin-alert__text {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(15, 23, 42, 0.8);
+}
+
+/* Close button container */
+.admin-alert__action {
+  margin-left: 0.25rem;
+}
+
+/* Close button */
+.admin-alert__close {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+
+  cursor: pointer;
+
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 1rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.admin-alert__close:hover {
+  background-color: rgba(148, 163, 184, 0.25);
+}
+
+/* Icon SVGs (embedded) per type */
+.admin-alert-success .admin-alert__icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='24' viewBox='0 -960 960 960' width='24' fill='%23ffffff'%3E%3Cpath d='M400-314.46 250.46-464 296-509.54l104 104 264-264L709.54-624 400-314.46Z'/%3E%3C/svg%3E");
+}
+
+.admin-alert-error .admin-alert__icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 14h-2v-2h2Zm0-4h-2V7h2Z'/%3E%3C/svg%3E");
+}
+
+.admin-alert-info .admin-alert__icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm0 4a1.25 1.25 0 1 1-1.25 1.25A1.25 1.25 0 0 1 12 6Zm1.5 11h-3v-1.5h1.25V11H10.5V9.5H13v6.5Z'/%3E%3C/svg%3E");
+}
+
+/* Accent colors per type */
+.admin-alert-success {
+  --admin-alert-accent: #22c55e; /* green */
+}
+
+.admin-alert-error {
+  --admin-alert-accent: #ef4444; /* red */
+}
+
+.admin-alert-info {
+  --admin-alert-accent: #3b82f6; /* blue */
+}
+
+/* Countdown keyframes (top bar) */
+@keyframes admin-alert-countdown {
+  0% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(0);
+  }
 }

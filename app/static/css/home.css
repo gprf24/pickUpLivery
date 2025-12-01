@@ -204,3 +204,81 @@ details.g-section[open] summary::after {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* User GPS block: badge + inline dropdown+button */
+.user-gps-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.gps-inline-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* smaller inline button to not dominate the row */
+.btn-sm-inline {
+  padding-inline: 10px;
+  padding-block: 4px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Assigned users block in pharmacy table */
+.assigned-users-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Row with chips */
+.assigned-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Single assigned user chip = tiny form */
+.assigned-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elev);
+  font-size: 12px;
+}
+
+/* Only text inside chip */
+.assigned-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* x button in chip */
+.assigned-remove {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  color: var(--muted);
+}
+
+.assigned-remove:hover {
+  color: var(--text);
+}
+
+/* Assign form under chips */
+.assign-inline-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}

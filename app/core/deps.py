@@ -4,6 +4,7 @@ Common FastAPI dependencies:
 
 - DB session (`get_session`)
 - Current user (`get_current_user`)
+- Optional current user (`get_current_user_optional`)
 - Admin guard (`require_admin`)
 - Global app settings (`get_app_settings`)
 - Jinja2 templates helper (`templates`)
@@ -11,7 +12,7 @@ Common FastAPI dependencies:
 
 from __future__ import annotations
 
-from typing import Generator
+from typing import Generator, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
@@ -37,47 +38,120 @@ def get_session() -> Generator[Session, None, None]:
         yield session
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers for user detection / bootstrap
+# ---------------------------------------------------------------------------
+
+
+def _get_user_from_cookie(request: Request, session: Session) -> Optional[User]:
+    """
+    Try to read the current user from the `user_id` cookie.
+
+    Returns:
+        - User instance if cookie is valid and user is active.
+        - None otherwise.
+    """
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return None
+
+    try:
+        uid = int(user_id)
+    except ValueError:
+        return None
+
+    user = session.get(User, uid)
+    if user and user.is_active:
+        return user
+
+    return None
+
+
+def _bootstrap_admin_if_none(session: Session) -> Optional[User]:
+    """
+    If there are no users in the DB at all, create a default admin:admin user.
+
+    Returns:
+        - The newly created admin user if bootstrap happened.
+        - None if at least one user already exists.
+    """
+    total_users = session.exec(select(User)).all()
+    if total_users:
+        return None
+
+    admin = User(
+        login="admin",
+        password_hash=hash_password("admin"),
+        role=UserRole.admin,
+        is_active=True,
+        require_pickup_location=False,
+    )
+    session.add(admin)
+    session.commit()
+    session.refresh(admin)
+    return admin
+
+
+# ---------------------------------------------------------------------------
+# Public dependencies
+# ---------------------------------------------------------------------------
+
+
 def get_current_user(
     request: Request,
     session: Session = Depends(get_session),
 ) -> User:
     """
-    Detect current user based on cookie "user_id".
+    Strict current user dependency.
 
     Behaviour:
     1) If a valid user_id cookie is present and refers to an active user → return it.
     2) If no users exist at all → bootstrap an admin:admin user and return it.
     3) Otherwise → raise 401 (Not logged in).
     """
-    # 1. Try to read user_id from cookies (set by /login)
-    user_id = request.cookies.get("user_id")
-    if user_id:
-        try:
-            uid = int(user_id)
-        except ValueError:
-            uid = None
-        if uid is not None:
-            user = session.get(User, uid)
-            if user and user.is_active:
-                return user
+    # 1. Try to load from cookie
+    user = _get_user_from_cookie(request, session)
+    if user:
+        return user
 
-    # 2. If no users exist at all → bootstrap admin:admin
-    total_users = session.exec(select(User)).all()
-    if not total_users:
-        admin = User(
-            login="admin",
-            password_hash=hash_password("admin"),
-            role=UserRole.admin,
-            is_active=True,
-            require_pickup_location=False,
-        )
-        session.add(admin)
-        session.commit()
-        session.refresh(admin)
+    # 2. Bootstrap admin if there are no users at all
+    admin = _bootstrap_admin_if_none(session)
+    if admin:
         return admin
 
     # 3. Otherwise unauthorized
     raise HTTPException(status_code=401, detail="Not logged in")
+
+
+def get_current_user_optional(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Optional[User]:
+    """
+    Soft / optional user dependency.
+
+    Behaviour:
+    1) If a valid user_id cookie is present and refers to an active user → return it.
+    2) If no users exist at all → bootstrap an admin:admin user and return it.
+    3) Otherwise → return None (do NOT raise 401).
+
+    This is useful for routes like `/` where you want:
+    - logged-in users to be redirected to tasks/history,
+    - guests to be redirected to login,
+    without throwing an HTTP 401.
+    """
+    # 1. Try to load from cookie
+    user = _get_user_from_cookie(request, session)
+    if user:
+        return user
+
+    # 2. Bootstrap admin if there are no users at all
+    admin = _bootstrap_admin_if_none(session)
+    if admin:
+        return admin
+
+    # 3. Guest – just return None
+    return None
 
 
 def require_admin(user: User) -> User:

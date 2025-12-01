@@ -28,16 +28,17 @@
 
   <body>
 
-    {# ===== Inline SVG sprite: MUST be inside <body>, before we call icon() ===== #}
+    {# Inline SVG sprite (must be before icon()) #}
     {% include 'partials/icons-sprite.html' %}
 
-    {# ===================== SHOULD WE SHOW HISTORY? ===================== #}
-    {# 
-       Rules:
-       - Admins ALWAYS see History.
-       - Drivers see History ONLY if settings.show_history_to_drivers is True.
-       - If settings not provided → driver по умолчанию НЕ видит history.
-    #}
+    {# ============================================================ #}
+    {# Detect if we are on /login → hide sidebar and mobile header #}
+    {# ============================================================ #}
+    {% set is_login_page = request.url.path.startswith('/login') %}
+
+    {# ============================================================ #}
+    {# Determine if History should be visible (same as before)     #}
+    {# ============================================================ #}
     {% set show_history = false %}
     {% if user %}
       {% if user.role == 'admin' %}
@@ -47,25 +48,28 @@
       {% endif %}
     {% endif %}
 
-    {# ===================== ROLE-AWARE HOME URL ===================== #}
+    {# ============================================================ #}
+    {# Home URL depending on role                                 #}
+    {# ============================================================ #}
     {% set home_url = '/login' %}
     {% if user %}
       {% if user.role == 'admin' %}
-        {# Если у админа по какой-то причине выключена history — отправляем на tasks #}
         {% if show_history %}
           {% set home_url = '/history' %}
         {% else %}
           {% set home_url = '/tasks' %}
         {% endif %}
       {% else %}
-        {# Drivers always go home to tasks #}
         {% set home_url = '/tasks' %}
       {% endif %}
     {% endif %}
 
     <div class="layout">
 
-      <!-- ========== SIDEBAR (desktop) ========== -->
+      {# ============================================================ #}
+      {# SIDEBAR — hidden on login page                             #}
+      {# ============================================================ #}
+      {% if not is_login_page %}
       <aside class="sidebar">
         <div class="sidebar-logo">
           <a class="sidebar-brand" href="{{ home_url }}" aria-label="PickUp Livery">
@@ -74,33 +78,33 @@
         </div>
 
         <nav class="sidebar-nav">
+
           <!-- Tasks -->
           <a href="/tasks"
             class="sidebar-link has-tooltip
-                   {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}"
+              {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}"
             data-tooltip="Tasks">
             <span class="sidebar-icon">{{ icon('tasks') }}</span>
           </a>
 
           <hr class="sidebar-divider" />
 
-          <!-- History (only if allowed) -->
+          <!-- History -->
           {% if show_history %}
             <a href="/history"
               class="sidebar-link has-tooltip
-                     {% if request.url.path.startswith('/history') %}is-active{% endif %}"
+                {% if request.url.path.startswith('/history') %}is-active{% endif %}"
               data-tooltip="History">
               <span class="sidebar-icon">{{ icon('history') }}</span>
             </a>
           {% endif %}
 
+          <!-- Admin -->
           {% if user and user.role == 'admin' %}
             <hr class="sidebar-divider" />
-
-            <!-- Admin -->
             <a href="/admin"
               class="sidebar-link has-tooltip
-                     {% if request.url.path.startswith('/admin') %}is-active{% endif %}"
+                {% if request.url.path.startswith('/admin') %}is-active{% endif %}"
               data-tooltip="Admin">
               <span class="sidebar-icon">{{ icon('admin') }}</span>
             </a>
@@ -128,11 +132,15 @@
           {% endif %}
         </div>
       </aside>
+      {% endif %}
 
-      <!-- ========== MAIN COLUMN ========== -->
-      <div class="layout-main">
+      {# ============================================================ #}
+      {# MAIN COLUMN — full width on login page                      #}
+      {# ============================================================ #}
+      <div class="layout-main {% if is_login_page %}layout-main-full{% endif %}">
 
-        <!-- MOBILE HEADER -->
+        {# MOBILE HEADER — hide on login page #}
+        {% if not is_login_page %}
         <header class="mobile-header">
           <button class="icon-btn mobile-burger" type="button" data-toggle-menu aria-label="Open navigation">
             {{ icon('menu') }}
@@ -156,7 +164,7 @@
           </div>
         </header>
 
-        <!-- MOBILE MENU OVERLAY -->
+        <!-- MOBILE MENU -->
         <nav class="mobile-menu" id="mobileMenu">
           <div class="mobile-menu-inner">
 
@@ -170,14 +178,14 @@
             <div class="mobile-menu-links">
               <a href="/tasks"
                 class="mobile-link
-                       {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}">
+                  {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}">
                 {{ icon('tasks', 'icon-inline') }} Tasks
               </a>
 
               {% if show_history %}
                 <a href="/history"
                   class="mobile-link
-                         {% if request.url.path.startswith('/history') %}is-active{% endif %}">
+                    {% if request.url.path.startswith('/history') %}is-active{% endif %}">
                   {{ icon('history', 'icon-inline') }} History
                 </a>
               {% endif %}
@@ -185,7 +193,7 @@
               {% if user and user.role == 'admin' %}
                 <a href="/admin"
                   class="mobile-link
-                         {% if request.url.path.startswith('/admin') %}is-active{% endif %}">
+                    {% if request.url.path.startswith('/admin') %}is-active{% endif %}">
                   {{ icon('admin', 'icon-inline') }} Admin
                 </a>
               {% endif %}
@@ -210,15 +218,27 @@
             </div>
           </div>
         </nav>
+        {% endif %}
 
-        <!-- MAIN CONTENT -->
+        <!-- ===================== MAIN CONTENT ===================== -->
         <main class="site-main container">
           {% block content %}{% endblock %}
         </main>
 
+
         <footer class="site-footer">
-          <div class="container">
+          <div class="container{% if is_login_page %} footer-login{% endif %}">
+                        {% if is_login_page %}
+              <button type="button"
+                      class="icon-btn"
+                      data-toggle-theme
+                      aria-label="Toggle theme" style="float:left;">
+                {{ icon('theme') }}
+              </button>
+            {% endif %}
             <small>© <span id="year"></span> PickUp Livery</small>
+
+
           </div>
         </footer>
 

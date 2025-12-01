@@ -24,7 +24,8 @@ dependencies = [
   "Pillow",
   "argon2-cffi",
 
-  "openpyxl>=3.1.0"
+  "openpyxl>=3.1.0",
+  "psycopg2-binary>=2.9.9"
 ]
 
 [tool.pytest.ini_options]

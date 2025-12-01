@@ -2,10 +2,33 @@
 {% block title %}Login · PickUp Livery{% endblock %}
 {% block content %}
 
-<section class="page-hero">
-  <h2 class="page-title">Login</h2>
-  <p class="lead">Enter your credentials to continue.</p>
+<section class="page-hero" style="
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+">
+  
+  <!-- FLEX LINE ONLY FOR LOGIN + LOGO -->
+  <div style="
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  ">
+    <h2 class="page-title" style="margin: 0;">Login</h2>
+
+    <img src="/static/img/logo.svg"
+         alt="PickUp Livery"
+         style="width: 32px; height: 32px; opacity: 0.9;">
+  </div>
+
+  <!-- Lead stays below -->
+  <p class="lead" style="margin-top: 6px;">
+    Enter your credentials to continue.
+  </p>
+
 </section>
+
 
 <form method="post" action="/login" class="card form-card form-grid login-form">
   <label class="form-label">

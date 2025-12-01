@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func
 from sqlalchemy import select as sa_select
 from sqlmodel import Session
@@ -44,6 +44,8 @@ INCLUDE_IN_SCHEMA: bool = False
 
 
 # ----------------------------- Helpers -----------------------------
+
+
 def _user_label(u: User) -> str:
     """Helper string for labels: full_name or login."""
     return getattr(u, "full_name", None) or u.login
@@ -68,7 +70,7 @@ def admin_dashboard(
     """
     require_admin(current)
 
-    # ---------- Counts (через sa_select + func.count) ----------
+    # ---------- Counts ----------
     users_count = session.exec(sa_select(func.count(User.id))).one()[0]
     regions_count = session.exec(sa_select(func.count(Region.id))).one()[0]
     pharmacies_count = session.exec(sa_select(func.count(Pharmacy.id))).one()[0]
@@ -89,7 +91,6 @@ def admin_dashboard(
         "app_settings": app_settings_count,
     }
 
-    # ---------- Списки сущностей (через sm_select → ORM-модели) ----------
     users = session.exec(sm_select(User).order_by(User.login)).all()
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
@@ -139,7 +140,7 @@ def admin_create_user(
     """
     Create a new user (admin-only).
 
-    Accepts login/password/role and an optional per-user GPS requirement flag.
+    This form is NOT AJAX, just redirects back to /admin.
     """
     require_admin(current)
 
@@ -152,15 +153,11 @@ def admin_create_user(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    gps_flag: Optional[bool]
-    if require_pickup_location == "inherit":
-        gps_flag = None
-    elif require_pickup_location == "require":
-        gps_flag = True
-    elif require_pickup_location == "no":
-        gps_flag = False
+    # Checkbox sends some string (e.g. "1") if checked, or nothing (None) if unchecked.
+    if require_pickup_location is not None:
+        gps_flag: Optional[bool] = True
     else:
-        gps_flag = None
+        gps_flag = None  # inherit global GPS setting
 
     user = User(
         login=login,
@@ -176,69 +173,17 @@ def admin_create_user(
 
 
 @router.post(
-    "/admin/users/toggle-active",
-    response_class=RedirectResponse,
-    include_in_schema=INCLUDE_IN_SCHEMA,
-)
-def admin_toggle_user_active(
-    user_id: int = Form(...),
-    session: Session = Depends(get_session),
-    current: User = Depends(get_current_user),
-):
-    """
-    Toggle user.is_active flag (admin-only).
-    """
-    require_admin(current)
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    u.is_active = not u.is_active
-    session.add(u)
-    session.commit()
-
-    return RedirectResponse(url="/admin", status_code=303)
-
-
-@router.post(
-    "/admin/users/change-password",
-    response_class=RedirectResponse,
-    include_in_schema=INCLUDE_IN_SCHEMA,
-)
-def admin_change_user_password(
-    user_id: int = Form(...),
-    new_password: str = Form(...),
-    session: Session = Depends(get_session),
-    current: User = Depends(get_current_user),
-):
-    """
-    Change password for a given user (admin-only).
-    """
-    require_admin(current)
-    u = session.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    u.password_hash = hash_password(new_password)
-    session.add(u)
-    session.commit()
-
-    return RedirectResponse(url="/admin", status_code=303)
-
-
-@router.post(
-    "/admin/users/set-gps",
-    response_class=RedirectResponse,
+    "/admin/users/{user_id}/gps",
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_set_user_gps_mode(
-    user_id: int = Form(...),
+    user_id: int,
     gps_mode: str = Form(...),
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ):
     """
-    Update per-user GPS requirement flag.
+    Update per-user GPS requirement flag (AJAX).
 
     gps_mode can be:
       - "inherit" -> require_pickup_location = None
@@ -246,9 +191,12 @@ def admin_set_user_gps_mode(
       - "no"      -> require_pickup_location = False
     """
     require_admin(current)
+
     u = session.get(User, user_id)
     if not u:
-        raise HTTPException(status_code=404, detail="User not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "User not found"}
+        )
 
     if gps_mode == "inherit":
         u.require_pickup_location = None
@@ -257,12 +205,134 @@ def admin_set_user_gps_mode(
     elif gps_mode == "no":
         u.require_pickup_location = False
     else:
-        raise HTTPException(status_code=400, detail="Invalid GPS mode")
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "Invalid GPS mode"},
+        )
 
     session.add(u)
     session.commit()
 
-    return RedirectResponse(url="/admin", status_code=303)
+    return JSONResponse({"ok": True, "gps_mode": gps_mode})
+
+
+@router.post(
+    "/admin/users/{user_id}/password",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_change_user_password_path(
+    user_id: int,
+    new_password: str = Form(...),
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Change password for a given user (AJAX, matches /admin/users/{id}/password).
+    """
+    require_admin(current)
+
+    u = session.get(User, user_id)
+    if not u:
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "User not found"}
+        )
+
+    if len(new_password) < 6:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "Password must be at least 6 characters"},
+        )
+
+    u.password_hash = hash_password(new_password)
+    session.add(u)
+    session.commit()
+
+    return JSONResponse({"ok": True})
+
+
+@router.post(
+    "/admin/users/{user_id}/toggle-active",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_toggle_user_active_path(
+    user_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Toggle user.is_active flag (AJAX, matches /admin/users/{id}/toggle-active).
+    """
+    require_admin(current)
+
+    u = session.get(User, user_id)
+    if not u:
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "User not found"}
+        )
+
+    u.is_active = not u.is_active
+    session.add(u)
+    session.commit()
+
+    return JSONResponse({"ok": True, "is_active": u.is_active})
+
+
+@router.post(
+    "/admin/users/{user_id}/delete",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_delete_user(
+    user_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Hard-delete a user (admin-only, AJAX).
+
+    Safety rules:
+    - You cannot delete yourself.
+    - You cannot delete a user that has pickups or pharmacy assignments.
+    """
+    require_admin(current)
+
+    user = session.get(User, user_id)
+    if not user:
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "User not found"}
+        )
+
+    # Do not allow deleting yourself
+    if user.id == current.id:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "You cannot delete yourself"},
+        )
+
+    # Check for related pickups
+    pickups_count = session.exec(
+        sa_select(func.count(Pickup.id)).where(Pickup.user_id == user_id)
+    ).one()[0]
+
+    # Check for user-pharmacy links
+    links_count = session.exec(
+        sa_select(func.count())
+        .select_from(UserPharmacyLink)
+        .where(UserPharmacyLink.user_id == user_id)
+    ).one()[0]
+
+    if pickups_count > 0 or links_count > 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "Cannot delete user with pickups or pharmacy assignments",
+            },
+        )
+
+    session.delete(user)
+    session.commit()
+
+    return JSONResponse({"ok": True})
 
 
 # ------------------------------ Regions ------------------------------
@@ -280,7 +350,7 @@ def admin_create_region(
     current: User = Depends(get_current_user),
 ):
     """
-    Create a new region (admin-only).
+    Create a new region (admin-only, non-AJAX, redirects).
     """
     require_admin(current)
 
@@ -298,28 +368,73 @@ def admin_create_region(
 
 
 @router.post(
-    "/admin/regions/toggle-active",
-    response_class=RedirectResponse,
+    "/admin/regions/{region_id}/toggle",
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
-def admin_toggle_region_active(
-    region_id: int = Form(...),
+def admin_toggle_region_active_path(
+    region_id: int,
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ):
     """
-    Toggle region.is_active (admin-only).
+    Toggle region.is_active (AJAX, matches /admin/regions/{id}/toggle).
     """
     require_admin(current)
+
     region = session.get(Region, region_id)
     if not region:
-        raise HTTPException(status_code=404, detail="Region not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Region not found"}
+        )
 
     region.is_active = not region.is_active
     session.add(region)
     session.commit()
 
-    return RedirectResponse(url="/admin", status_code=303)
+    return JSONResponse({"ok": True, "is_active": region.is_active})
+
+
+@router.post(
+    "/admin/regions/{region_id}/delete",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_delete_region(
+    region_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Hard-delete a region (admin-only, AJAX).
+
+    Safety rules:
+    - You cannot delete a region that still has pharmacies.
+    """
+    require_admin(current)
+
+    region = session.get(Region, region_id)
+    if not region:
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Region not found"}
+        )
+
+    # Check if region has pharmacies
+    pharmacies_count = session.exec(
+        sa_select(func.count(Pharmacy.id)).where(Pharmacy.region_id == region_id)
+    ).one()[0]
+
+    if pharmacies_count > 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "Cannot delete region with existing pharmacies",
+            },
+        )
+
+    session.delete(region)
+    session.commit()
+
+    return JSONResponse({"ok": True})
 
 
 # ------------------------------ Pharmacies ------------------------------
@@ -339,7 +454,7 @@ def admin_create_pharmacy(
     current: User = Depends(get_current_user),
 ):
     """
-    Create a new pharmacy (admin-only).
+    Create a new pharmacy (admin-only, non-AJAX, redirects).
     """
     require_admin(current)
 
@@ -366,74 +481,34 @@ def admin_create_pharmacy(
 
 
 @router.post(
-    "/admin/pharmacies/toggle-active",
-    response_class=RedirectResponse,
+    "/admin/pharmacies/{pharmacy_id}/toggle",
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
-def admin_toggle_pharmacy_active(
-    pharmacy_id: int = Form(...),
+def admin_toggle_pharmacy_active_path(
+    pharmacy_id: int,
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ):
     """
-    Toggle pharmacy.is_active (admin-only).
+    Toggle pharmacy.is_active (AJAX, matches /admin/pharmacies/{id}/toggle).
     """
     require_admin(current)
+
     pharmacy = session.get(Pharmacy, pharmacy_id)
     if not pharmacy:
-        raise HTTPException(status_code=404, detail="Pharmacy not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Pharmacy not found"}
+        )
 
     pharmacy.is_active = not pharmacy.is_active
     session.add(pharmacy)
     session.commit()
 
-    return RedirectResponse(url="/admin", status_code=303)
-
-
-@router.post(
-    "/admin/pharmacies/assign-driver",
-    response_class=RedirectResponse,
-    include_in_schema=INCLUDE_IN_SCHEMA,
-)
-def admin_assign_driver_to_pharmacy(
-    user_id: int = Form(...),
-    pharmacy_id: int = Form(...),
-    session: Session = Depends(get_session),
-    current: User = Depends(get_current_user),
-):
-    """
-    Assign a driver to a pharmacy (admin-only).
-    """
-    require_admin(current)
-
-    user = session.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    pharmacy = session.get(Pharmacy, pharmacy_id)
-    if not pharmacy:
-        raise HTTPException(status_code=404, detail="Pharmacy not found")
-
-    existing = session.exec(
-        select(UserPharmacyLink).where(
-            UserPharmacyLink.user_id == user.id,
-            UserPharmacyLink.pharmacy_id == pharmacy.id,
-        )
-    ).first()
-    if existing:
-        # Already assigned -> no-op
-        return RedirectResponse(url="/admin", status_code=303)
-
-    link = UserPharmacyLink(user_id=user.id, pharmacy_id=pharmacy.id)
-    session.add(link)
-    session.commit()
-
-    return RedirectResponse(url="/admin", status_code=303)
+    return JSONResponse({"ok": True, "is_active": pharmacy.is_active})
 
 
 @router.post(
     "/admin/pharmacies/{pharmacy_id}/assign",
-    response_class=RedirectResponse,
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_assign_driver_to_pharmacy_path(
@@ -443,17 +518,21 @@ def admin_assign_driver_to_pharmacy_path(
     current: User = Depends(get_current_user),
 ):
     """
-    Assign a user to a pharmacy (matches form: /admin/pharmacies/{id}/assign).
+    Assign a user to a pharmacy (AJAX, matches /admin/pharmacies/{id}/assign).
     """
     require_admin(current)
 
     user = session.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "User not found"}
+        )
 
     pharmacy = session.get(Pharmacy, pharmacy_id)
     if not pharmacy:
-        raise HTTPException(status_code=404, detail="Pharmacy not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Pharmacy not found"}
+        )
 
     existing = session.exec(
         select(UserPharmacyLink).where(
@@ -462,19 +541,18 @@ def admin_assign_driver_to_pharmacy_path(
         )
     ).first()
     if existing:
-        # Already assigned -> no-op
-        return RedirectResponse(url="/admin", status_code=303)
+        # Already assigned -> idempotent success
+        return JSONResponse({"ok": True, "already_assigned": True})
 
     link = UserPharmacyLink(user_id=user.id, pharmacy_id=pharmacy.id)
     session.add(link)
     session.commit()
 
-    return RedirectResponse(url="/admin", status_code=303)
+    return JSONResponse({"ok": True})
 
 
 @router.post(
     "/admin/pharmacies/{pharmacy_id}/unassign",
-    response_class=RedirectResponse,
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_unassign_driver_from_pharmacy(
@@ -484,13 +562,15 @@ def admin_unassign_driver_from_pharmacy(
     current: User = Depends(get_current_user),
 ):
     """
-    Unassign a user from a pharmacy (matches form: /admin/pharmacies/{id}/unassign).
+    Unassign a user from a pharmacy (AJAX, matches /admin/pharmacies/{id}/unassign).
     """
     require_admin(current)
 
     pharmacy = session.get(Pharmacy, pharmacy_id)
     if not pharmacy:
-        raise HTTPException(status_code=404, detail="Pharmacy not found")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Pharmacy not found"}
+        )
 
     link = session.exec(
         select(UserPharmacyLink).where(
@@ -503,8 +583,58 @@ def admin_unassign_driver_from_pharmacy(
         session.delete(link)
         session.commit()
 
-    # Even if nothing was deleted, just go back to admin
-    return RedirectResponse(url="/admin", status_code=303)
+    # Even if nothing was deleted, treat as success (idempotent)
+    return JSONResponse({"ok": True})
+
+
+@router.post(
+    "/admin/pharmacies/{pharmacy_id}/delete",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_delete_pharmacy(
+    pharmacy_id: int,
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Hard-delete a pharmacy (admin-only, AJAX).
+
+    Safety rules:
+    - You cannot delete a pharmacy that has pickups or user assignments.
+    """
+    require_admin(current)
+
+    pharmacy = session.get(Pharmacy, pharmacy_id)
+    if not pharmacy:
+        return JSONResponse(
+            status_code=404, content={"ok": False, "error": "Pharmacy not found"}
+        )
+
+    # Check for related pickups
+    pickups_count = session.exec(
+        sa_select(func.count(Pickup.id)).where(Pickup.pharmacy_id == pharmacy_id)
+    ).one()[0]
+
+    # Check for user-pharmacy links
+    links_count = session.exec(
+        sa_select(func.count())
+        .select_from(UserPharmacyLink)
+        .where(UserPharmacyLink.pharmacy_id == pharmacy_id)
+    ).one()[0]
+
+    if pickups_count > 0 or links_count > 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "Cannot delete pharmacy with pickups or user assignments",
+            },
+        )
+
+    session.delete(pharmacy)
+    session.commit()
+
+    return JSONResponse({"ok": True})
 
 
 # -------------------------- Global settings --------------------------
@@ -540,7 +670,7 @@ def admin_get_settings(
 def admin_update_settings(
     allowed_pickups_per_day: int = Form(...),
     require_pickup_location_global: bool = Form(False),
-    # FIX: always treat missing as False and always update
+    # Always treat missing as False and always update
     show_history_to_drivers: bool = Form(False),
     min_required_photos: int = Form(...),
     photo_source_mode: str = Form(...),
@@ -548,7 +678,7 @@ def admin_update_settings(
     current: User = Depends(get_current_user),
 ):
     """
-    Update global application settings from the admin form.
+    Update global application settings from the admin form (non-AJAX).
     """
     require_admin(current)
     settings_obj = get_app_settings(session)
