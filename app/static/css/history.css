@@ -1,9 +1,11 @@
 /* ========= FILTER BAR (history page) ========= */
 
+/* Main filter card on top of history page */
 .filter-bar {
   padding: 8px 10px;
 }
 
+/* Layout of all chips and controls inside the filter form */
 .filter-chips-layout {
   display: flex;
   align-items: center;
@@ -11,7 +13,7 @@
   flex-wrap: wrap;
 }
 
-/* left counter text */
+/* Left small counter: how many days are shown */
 .filter-counter {
   font-size: 11px;
   color: var(--muted);
@@ -22,7 +24,7 @@
   font-weight: 600;
 }
 
-/* generic chip */
+/* Generic chip style (date, region, pharmacy, driver, export format) */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -44,28 +46,29 @@
   color: var(--text);
 }
 
-/* date chip a bit wider */
+/* Date chip is a bit wider */
 .chip-date {
   min-width: 190px;
   justify-content: space-between;
 }
 
+/* Focus outline for accessibility */
 .chip:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* simple wrapper (used by date chip) */
+/* Simple wrapper (used by date chip) */
 .chip-wrapper {
   position: relative;
 }
 
-/* custom dropdown chip wrapper */
+/* Wrapper for custom dropdowns (Region / Pharmacy / Driver / Export) */
 .chip-dropdown-wrapper {
   position: relative;
 }
 
-/* caret icon */
+/* Caret icon inside chips (down arrow) */
 .chip-caret {
   width: 10px;
   height: 10px;
@@ -77,23 +80,24 @@
   transition: transform 0.15s ease-out;
 }
 
+/* Rotate caret when dropdown is open */
 .chip-dropdown-wrapper.is-open .chip-caret,
 .chip-wrapper .chip-date.is-open .chip-caret {
   transform: rotate(180deg);
 }
 
-/* "x" icon inside chips */
+/* Small "x" icon inside chips for clearing filter */
 .chip-clear-icon {
   font-size: 12px;
   opacity: 0.7;
 }
 
-/* clear-all link on the right */
+/* Right side: "Reset" button container */
 .filter-actions {
   margin-left: auto;
 }
 
-/* ====== date popover ====== */
+/* ====== Date popover under date chip ====== */
 
 .date-popover {
   position: absolute;
@@ -102,6 +106,7 @@
   z-index: 40;
 }
 
+/* Popover body with presets + date inputs */
 .date-popover-panel {
   display: none;
   min-width: 280px;
@@ -112,23 +117,26 @@
   box-shadow: var(--shadow);
 }
 
+/* Show panel when .is-open is set */
 .date-popover.is-open .date-popover-panel {
   display: block;
 }
 
+/* Two-column grid: presets on the left, date fields on the right */
 .date-popover-grid {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
   gap: 8px 12px;
 }
 
-/* preset buttons column */
+/* Preset buttons column (Today, Yesterday, etc.) */
 .date-presets {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+/* Individual preset button */
 .quick-btn {
   border: 0;
   padding: 3px 8px;
@@ -149,13 +157,14 @@
   color: var(--text);
 }
 
-/* date inputs column */
+/* Date inputs column */
 .date-inputs {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+/* Label + input stacked */
 .date-input-label {
   display: flex;
   flex-direction: column;
@@ -164,6 +173,7 @@
   color: var(--muted);
 }
 
+/* Native HTML date input styling */
 .date-input {
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
@@ -178,7 +188,7 @@
   outline-offset: 1px;
 }
 
-/* tiny ghost button for reset inside popover */
+/* Tiny ghost button for "Reset" inside date popover */
 .btn-xs.btn-ghost {
   align-self: flex-start;
   padding: 2px 6px;
@@ -193,7 +203,7 @@
   text-decoration: underline;
 }
 
-/* ====== dropdown menus for Region / Pharmacy / Driver / Export format ====== */
+/* ====== Dropdown menus for Region / Pharmacy / Driver / Export format ====== */
 
 .dropdown-menu {
   position: absolute;
@@ -209,10 +219,12 @@
   z-index: 35;
 }
 
+/* Show dropdown when wrapper has .is-open */
 .chip-dropdown-wrapper.is-open .dropdown-menu {
   display: block;
 }
 
+/* Button-like entries inside dropdown */
 .dropdown-item {
   width: 100%;
   padding: 5px 8px;
@@ -232,6 +244,7 @@
 .dropdown-item.is-active {
   background: rgba(91, 113, 239, 0.2);
 }
+
 /* Select styled as a chip (re-uses history chip visuals) */
 .select-chip {
   border-radius: 999px;
@@ -243,12 +256,12 @@
   color: var(--text);
   cursor: pointer;
 
-  /* remove native arrow */
+  /* Remove native select arrow */
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
 
-  /* custom caret (same as .chip-caret) */
+  /* Custom caret (same SVG as .chip-caret) */
   background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa6b2' stroke-width='1.3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
@@ -262,6 +275,7 @@
 
 /* ======= FILTER + EXPORT ROW LAYOUT ======= */
 
+/* Row with filter card on the left and export card on the right */
 .filter-export-row {
   display: flex;
   gap: 10px;
@@ -274,7 +288,7 @@
   flex: 1 1 70%;
 }
 
-/* Export card is compact on the right */
+/* Export card is compact on the right side */
 .export-card {
   flex: 0 0 auto;
   padding: 8px 12px;
@@ -312,7 +326,7 @@
   justify-content: space-between;
 }
 
-/* Button block */
+/* Button container */
 .export-actions {
   display: flex;
   align-items: center;
@@ -345,16 +359,19 @@
 
 /* ========= HISTORY GROUPS & ROWS ========= */
 
+/* Main card that wraps all day groups */
 .history-card {
   padding: 10px 12px;
 }
 
+/* Small text above groups */
 .h-legend {
   font-size: 12px;
   margin-bottom: 6px;
   color: var(--muted);
 }
 
+/* Separator between days */
 .history-day + .history-day {
   border-top: 1px solid var(--border-subtle);
   margin-top: 8px;
@@ -380,14 +397,14 @@
   font-weight: 600;
 }
 
+/* List of rows for a given day */
 .history-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-/* Each row is a <details> */
-
+/* Each pickup row is a <details> element */
 .history-row {
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
@@ -395,10 +412,12 @@
   overflow: hidden;
 }
 
+/* Dark theme background for row */
 html[data-theme="dark"] .history-row {
   background: rgba(15, 23, 42, 0.96);
 }
 
+/* Remove default marker from <summary> and make it clickable */
 .history-row summary {
   list-style: none;
   cursor: pointer;
@@ -408,6 +427,7 @@ html[data-theme="dark"] .history-row {
   display: none;
 }
 
+/* Main row grid: time, driver, pharmacy, photos, status, arrow */
 .history-row-main {
   display: grid;
   grid-template-columns: 130px 1.2fr 1.4fr 90px 80px 20px;
@@ -417,23 +437,25 @@ html[data-theme="dark"] .history-row {
   font-size: 13px;
 }
 
+/* Use tabular numbers for better time alignment */
 .history-col.time {
   font-feature-settings: "tnum" 1;
 }
 
+/* Photos column: slightly smaller and muted */
 .history-col.photos {
   font-size: 12px;
   color: var(--muted);
 }
 
+/* Right arrow chevron */
 .history-col.arrow {
   text-align: right;
   font-size: 16px;
   color: var(--muted);
 }
 
-/* Status pill */
-
+/* Status pill (generic) */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -444,14 +466,21 @@ html[data-theme="dark"] .history-row {
   background: rgba(148, 163, 184, 0.12);
 }
 
+/* Green pill for "On time" */
 .status-ok {
   background: rgba(22, 163, 74, 0.12);
   border-color: rgba(22, 163, 74, 0.7);
   color: #15803d;
 }
 
-/* Expanded details area */
+/* You can add a red style for "Late" if needed */
+.status-late {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.8);
+  color: #b91c1c;
+}
 
+/* Expanded details area (when details is open) */
 .history-row-details {
   border-top: 1px solid var(--border-subtle);
   padding: 10px 12px 12px;
@@ -462,8 +491,7 @@ html[data-theme="dark"] .history-row-details {
   background: rgba(15, 23, 42, 0.98);
 }
 
-/* Detail layout */
-
+/* Detail layout: Photos | Location | Metadata */
 .history-detail-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
@@ -476,33 +504,62 @@ html[data-theme="dark"] .history-row-details {
   font-weight: 600;
 }
 
-/* Metadata list */
+/* ========= COMPACT METADATA LAYOUT (inside details) ========= */
 
+/*
+  By default, metadata was a long single column.
+  Now we use a two-column grid for the pairs (Status, Timing, Cutoff, Created at, ID, Comment)
+  so the block becomes more compact and closer to the look on your screenshot.
+*/
+
+/* Overall grid for metadata entries: 2 columns on desktop */
 .meta-list {
   margin: 0;
   display: grid;
-  gap: 4px;
-  font-size: 13px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 6px;
+  font-size: 12px;
 }
 
+/* Each pair "label → value" forms a small 2-column grid */
+.meta-list > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: baseline;
+}
+
+/* Labels (dt): small, uppercased, muted */
 .meta-list dt {
+  font-size: 11px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
+/* Values (dd): main text color */
 .meta-list dd {
   margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Keep "muted" span muted even inside dd */
+.meta-list dd .muted {
   color: var(--muted);
 }
 
-/* Photos grid */
-
+/* Photos grid with thumbnails */
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   gap: 6px;
 }
 
-/* Thumb as button */
+/* Thumbnail as a button for the lightbox */
 .photo-thumb {
   border: none;
   padding: 0;
@@ -531,6 +588,7 @@ html[data-theme="dark"] .history-row-details {
     max-width: 120px;
   }
 
+  /* On smaller screens hide some columns to keep row compact */
   .history-row-main {
     grid-template-columns: 120px 1.4fr 90px 20px;
   }
@@ -547,20 +605,23 @@ html[data-theme="dark"] .history-row-details {
 
 /* ========= PHOTO LIGHTBOX ========= */
 
+/* Backdrop overlay for the large photo view */
 .lightbox-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
 }
 
+/* Hidden state for the lightbox (used via [hidden] attribute) */
 .lightbox-backdrop[hidden] {
   display: none !important;
 }
 
+/* Lightbox container with photo and navigation arrows */
 .lightbox-content {
   position: relative;
   max-width: 90vw;
@@ -568,7 +629,7 @@ html[data-theme="dark"] .history-row-details {
   background: var(--card, #111827);
   border-radius: 12px;
   padding: 16px 40px;
-  box-shadow: var(--shadow, 0 18px 50px rgba(0,0,0,.6));
+  box-shadow: var(--shadow, 0 18px 50px rgba(0, 0, 0, 0.6));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -582,6 +643,7 @@ html[data-theme="dark"] .history-row-details {
   display: block;
 }
 
+/* Close button (X) in the top-right corner */
 .lightbox-close {
   position: absolute;
   top: 8px;
@@ -593,6 +655,7 @@ html[data-theme="dark"] .history-row-details {
   cursor: pointer;
 }
 
+/* Navigation arrows (prev/next) */
 .lightbox-nav {
   border: none;
   background: transparent;
@@ -602,6 +665,7 @@ html[data-theme="dark"] .history-row-details {
   padding: 4px 8px;
 }
 
+/* Counter in the bottom-right corner (e.g. "2 / 4") */
 .lightbox-counter {
   position: absolute;
   bottom: 8px;
@@ -610,6 +674,26 @@ html[data-theme="dark"] .history-row-details {
   color: var(--muted, #9ca3af);
 }
 
+/* Prevent background scroll when lightbox is open */
 body.modal-open {
   overflow: hidden;
+}
+/* === Fine-tuning metadata layout to avoid collisions === */
+
+/* Make the two big metadata columns wider apart */
+.meta-list {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr);
+  column-gap: 32px; /* more space between left and right metadata columns */
+}
+
+/* Inside each pair "LABEL → value" give label more width and more gap */
+.meta-list > div {
+  grid-template-columns: 110px minmax(0, 1fr); /* was 90px */
+  column-gap: 10px;
+}
+
+/* Allow long values (dates, comments) to wrap instead of visually
+   touching the next column */
+.meta-list dd {
+  word-break: break-word;
 }

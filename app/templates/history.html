@@ -309,12 +309,13 @@
           {% for pickup, ph, u in items %}
             {% set pids = (photo_public_ids.get(pickup.id) or []) %}
             {% set photo_qty = pids|length %}
+            {% set timing = pickup.timing_status or 'no_cutoff' %}
 
             <details class="history-row">
               <summary>
                 <div class="history-row-main">
 
-                  <!-- Time -->
+                  <!-- Time (shown in local time with weekday via JS) -->
                   <span class="history-col time">
                     <time class="utc-to-local"
                           datetime="{{ pickup.created_at.strftime('%Y-%m-%dT%H:%M:%S') }}Z"
@@ -352,12 +353,23 @@
                     {% endif %}
                   </span>
 
-                  <!-- Status -->
+                  <!-- Timing status (on_time / late / no_cutoff) -->
                   <span class="history-col status">
-                    {% if pickup.status in ["ok","success","done"] %}
-                      <span class="status-pill status-ok">OK</span>
+                    {% if timing == "late" %}
+                      <span class="status-pill status-late"
+                            title="Pickup was created after the latest allowed time (late).">
+                        Late
+                      </span>
+                    {% elif timing == "on_time" %}
+                      <span class="status-pill status-ok"
+                            title="Pickup was created before or at the latest allowed time (on time).">
+                        On time
+                      </span>
                     {% else %}
-                      <span class="status-pill">{{ pickup.status }}</span>
+                      <span class="status-pill"
+                            title="No cutoff time was defined for this pharmacy at the moment of pickup.">
+                        No cutoff
+                      </span>
                     {% endif %}
                   </span>
 
@@ -411,6 +423,34 @@
                       <div>
                         <dt>Status</dt>
                         <dd>{{ pickup.status }}</dd>
+                      </div>
+                      <div>
+                        <dt>Timing status</dt>
+                        <dd>
+                          {% if pickup.timing_status == "late" %}
+                            Late (after cutoff)
+                          {% elif pickup.timing_status == "on_time" %}
+                            On time (within cutoff)
+                          {% elif pickup.timing_status == "no_cutoff" %}
+                            No cutoff defined
+                          {% else %}
+                            <span class="muted">Unknown</span>
+                          {% endif %}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Cutoff snapshot</dt>
+                        <dd>
+                          {% if pickup.cutoff_at_utc %}
+                            <time class="utc-to-local"
+                                  datetime="{{ pickup.cutoff_at_utc.strftime('%Y-%m-%dT%H:%M:%S') }}Z"
+                                  title="UTC: {{ pickup.cutoff_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z">
+                              {{ pickup.cutoff_at_utc.strftime('%Y-%m-%d %H:%M') }} UTC
+                            </time>
+                          {% else %}
+                            <span class="muted">No cutoff was active for this day.</span>
+                          {% endif %}
+                        </dd>
                       </div>
                       <div>
                         <dt>Created at (UTC)</dt>
@@ -472,11 +512,14 @@
     const d = new Date(iso);
     if (isNaN(d.getTime())) continue;
 
+    // Show weekday + local date+time, so admin sees which weekday it was
     const opts = {
+      weekday: "short",
       year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit"
     };
-    t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
+    t.textContent = new Intl.DateTimeFormat("en-GB", opts).format(d);
+    //  t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
   }
 })();
 

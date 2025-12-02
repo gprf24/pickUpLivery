@@ -1,4 +1,3 @@
-# app/api/v1/pages.py
 """
 Frontend page routes for PickUp Livery.
 Renders templates: tasks, pickup form, history, admin dashboard, etc.
@@ -447,10 +446,12 @@ def history_export(
       - region
       - pharmacy
       - driver
-      - pickup_time_de  (pickup timestamp converted to Europe/Berlin)
-      - photo_count     (number of stored photos)
-      - geolocation     (lat,lon if coordinates are present)
-      - comment         (optional driver comment)
+      - pickup_time_de     (pickup timestamp converted to Europe/Berlin)
+      - timing_status      (on_time / late / no_cutoff)
+      - cutoff_time_utc    (snapshot of pharmacy cutoff for that day, time-of-day in UTC)
+      - photo_count        (number of stored photos)
+      - geolocation        (lat,lon if coordinates are present)
+      - comment            (optional driver comment)
     """
     require_admin(user)
 
@@ -538,9 +539,20 @@ def history_export(
         photo_count = photo_count_by_pickup.get(pickup.id, 0)
 
         if pickup.latitude is not None and pickup.longitude is not None:
-            geolocation = f"{pickup.latitude:.6f},{pickup.longitude:.66f}"
+            geolocation = f"{pickup.latitude:.6f},{pickup.longitude:.6f}"
         else:
             geolocation = ""
+
+        # NEW: timing status and cutoff snapshot based on cutoff_at_utc
+        timing_status = pickup.timing_status or ""
+
+        if pickup.cutoff_at_utc:
+            cutoff_utc = pickup.cutoff_at_utc
+            if cutoff_utc.tzinfo is None:
+                cutoff_utc = cutoff_utc.replace(tzinfo=timezone.utc)
+            cutoff_time_utc_str = cutoff_utc.time().strftime("%H:%M:%S")
+        else:
+            cutoff_time_utc_str = ""
 
         data_rows.append(
             {
@@ -548,6 +560,8 @@ def history_export(
                 "pharmacy": pharmacy_name,
                 "driver": driver_name,
                 "pickup_time_de": pickup_time_str,
+                "timing_status": timing_status,
+                "cutoff_time_utc": cutoff_time_utc_str,
                 "photo_count": str(photo_count),
                 "geolocation": geolocation,
                 "comment": pickup.comment or "",
@@ -560,6 +574,8 @@ def history_export(
         "pharmacy",
         "driver",
         "pickup_time_de",
+        "timing_status",
+        "cutoff_time_utc",
         "photo_count",
         "geolocation",
         "comment",

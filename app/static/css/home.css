@@ -8,9 +8,11 @@
   margin: 0 auto 1.75rem;
   padding: 1.75rem 1.5rem;
   text-align: left;
-  background: linear-gradient(135deg,
-      rgba(91, 113, 239, 0.18),
-      rgba(12, 18, 30, 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(91, 113, 239, 0.18),
+    rgba(12, 18, 30, 0.9)
+  );
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
@@ -66,9 +68,6 @@ details.g-section summary {
   font-weight: 600;
   color: var(--text);
   background: color-mix(in srgb, var(--brand) 75%, transparent);
-
-
-
 }
 
 /* Remove default marker */
@@ -84,7 +83,6 @@ details.g-section h2 {
   background: linear-gradient(90deg, var(--brand), var(--brandred));
   -webkit-background-clip: text;
   background-clip: text;
-
 }
 
 /* Summary caret icon (created via CSS) */
@@ -205,7 +203,6 @@ details.g-section[open] summary::after {
   }
 }
 
-
 /* User GPS block: badge + inline dropdown+button */
 .user-gps-block {
   display: flex;
@@ -281,4 +278,189 @@ details.g-section[open] summary::after {
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+/* ============================
+   Pharmacy cutoff summary + modal
+   ============================ */
+
+/* Wrapper in table cell */
+.pharmacy-cutoff-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+/* Text with "Mon 15:30, Tue —, ..." */
+.pharmacy-cutoff-summary-text {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+/* Extra small button variant */
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* Backdrop for cutoff modal */
+.cutoff-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  backdrop-filter: blur(4px);
+}
+
+/* Hide when [hidden] is set */
+.cutoff-modal-backdrop[hidden] {
+  display: none !important;
+}
+
+/* Modal panel */
+.cutoff-modal {
+  width: min(480px, 100% - 2rem);
+  background: var(--card);
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  padding: 0.9rem 1rem 1.1rem;
+}
+
+/* Header row in modal */
+.cutoff-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.cutoff-modal-header h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Close button (×) */
+.cutoff-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0.1rem;
+}
+
+.cutoff-modal-close:hover {
+  color: var(--text);
+}
+
+/* Body */
+.cutoff-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* Grid with days */
+.cutoffs-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+
+/* Single row "Mon [time]" etc. */
+.cutoff-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Day label */
+.cutoff-label {
+  width: 3.2rem;
+  font-weight: 500;
+}
+
+/* Smaller input inside modal */
+.form-input-sm {
+  padding-block: 0.25rem;
+  font-size: 0.85rem;
+}
+
+/* Divider before Mon–Fri application row */
+.cutoff-divider {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0.6rem 0;
+}
+
+/* Mon–Fri row */
+.cutoff-weekdays-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Small hint text under Mon–Fri */
+.cutoff-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Action row (Save button) */
+.cutoffs-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+}
+
+/* Modal responsiveness */
+@media (max-width: 600px) {
+  .cutoff-modal {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 0.75rem;
+  }
+
+  .cutoff-weekdays-row {
+    flex-wrap: wrap;
+  }
+
+  .cutoff-label {
+    width: 2.6rem;
+  }
+}
+
+/* If screen height is small, allow modal to scroll */
+@media (max-height: 600px) {
+  .cutoff-modal {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+}
+
+/* Prevent background scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+.btn-toggle {
+  min-width: 7.5rem;         
+  text-align: center;
+  justify-content: center;    
+}
+
+
+.btn-toggle {
+  display: inline-flex;
+  align-items: center;
 }

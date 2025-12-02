@@ -1,16 +1,16 @@
-# app/api/v1/admin.py
 """
 Admin endpoints:
 
 - User management (create, toggle active, change password, per-user GPS flag).
 - Region management (create, toggle active).
-- Pharmacy management (create, toggle active, assign drivers).
+- Pharmacy management (create, toggle active, assign drivers, cutoff time config).
 - Diagnostics (duplicate name preview).
 - Global AppSettings edit (pickup limits, GPS behaviour, photo rules).
 """
 
 from __future__ import annotations
 
+from datetime import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -54,6 +54,40 @@ def _user_label(u: User) -> str:
 def _get_app_settings(session: Session) -> AppSettings:
     """Wrapper around core deps helper for easier unit testing."""
     return get_app_settings(session)
+
+
+def _parse_local_hhmm(value: Optional[str]) -> Optional[time]:
+    """
+    Parse a local time string "HH:MM" into a `time` object.
+
+    Returns:
+        - None if the string is empty/whitespace.
+        - time(hour, minute) if parsing is successful.
+
+    Raises:
+        ValueError if the format is invalid.
+    """
+    if value is None:
+        return None
+
+    value = value.strip()
+    if not value:
+        return None
+
+    try:
+        hh_str, mm_str = value.split(":", 1)
+        hh = int(hh_str)
+        mm = int(mm_str)
+        if not (0 <= hh <= 23 and 0 <= mm <= 59):
+            raise ValueError
+        return time(hour=hh, minute=mm)
+    except Exception:
+        raise ValueError(f"Invalid time format '{value}', expected HH:MM")
+
+
+def _is_ajax(request: Request) -> bool:
+    """Detect if request came from frontend fetch (AJAX)."""
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
 # --------------------------- Admin dashboard ---------------------------
@@ -126,10 +160,10 @@ def admin_dashboard(
 
 @router.post(
     "/admin/users/create",
-    response_class=RedirectResponse,
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_create_user(
+    request: Request,
     login: str = Form(...),
     password: str = Form(...),
     role: str = Form("driver"),
@@ -140,17 +174,28 @@ def admin_create_user(
     """
     Create a new user (admin-only).
 
-    This form is NOT AJAX, just redirects back to /admin.
+    - If normal form submit (no AJAX) -> redirect back to /admin.
+    - If AJAX (X-Requested-With: XMLHttpRequest) -> JSON with new user payload.
     """
     require_admin(current)
 
     exists = session.exec(select(User).where(User.login == login)).first()
     if exists:
+        if _is_ajax(request):
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Login already exists"},
+            )
         raise HTTPException(status_code=400, detail="Login already exists")
 
     try:
         user_role = UserRole(role)
     except ValueError:
+        if _is_ajax(request):
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Invalid role"},
+            )
         raise HTTPException(status_code=400, detail="Invalid role")
 
     # Checkbox sends some string (e.g. "1") if checked, or nothing (None) if unchecked.
@@ -168,8 +213,30 @@ def admin_create_user(
     )
     session.add(user)
     session.commit()
+    session.refresh(user)
 
-    return RedirectResponse(url="/admin", status_code=303)
+    if not _is_ajax(request):
+        return RedirectResponse(url="/admin", status_code=303)
+
+    if gps_flag is None:
+        gps_mode = "inherit"
+    elif gps_flag:
+        gps_mode = "require"
+    else:
+        gps_mode = "no"
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "user": {
+                "id": user.id,
+                "login": user.login,
+                "role": user.role.value,
+                "is_active": user.is_active,
+                "gps_mode": gps_mode,
+            },
+        }
+    )
 
 
 @router.post(
@@ -270,6 +337,14 @@ def admin_toggle_user_active_path(
             status_code=404, content={"ok": False, "error": "User not found"}
         )
 
+    # Safety: do not allow the currently logged-in admin to toggle themselves,
+    # to avoid accidentally deactivating their own account.
+    if u.id == current.id:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "You cannot deactivate yourself"},
+        )
+
     u.is_active = not u.is_active
     session.add(u)
     session.commit()
@@ -340,22 +415,30 @@ def admin_delete_user(
 
 @router.post(
     "/admin/regions/create",
-    response_class=RedirectResponse,
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_create_region(
+    request: Request,
     name: str = Form(...),
     is_active: bool = Form(True),
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ):
     """
-    Create a new region (admin-only, non-AJAX, redirects).
+    Create a new region (admin-only).
+
+    - Non-AJAX -> redirect.
+    - AJAX     -> JSON with new region payload.
     """
     require_admin(current)
 
     existing = session.exec(select(Region).where(Region.name == name)).first()
     if existing:
+        if _is_ajax(request):
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Region with this name already exists"},
+            )
         raise HTTPException(
             status_code=400, detail="Region with this name already exists"
         )
@@ -363,8 +446,21 @@ def admin_create_region(
     region = Region(name=name, is_active=is_active)
     session.add(region)
     session.commit()
+    session.refresh(region)
 
-    return RedirectResponse(url="/admin", status_code=303)
+    if not _is_ajax(request):
+        return RedirectResponse(url="/admin", status_code=303)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "region": {
+                "id": region.id,
+                "name": region.name,
+                "is_active": region.is_active,
+            },
+        }
+    )
 
 
 @router.post(
@@ -442,42 +538,110 @@ def admin_delete_region(
 
 @router.post(
     "/admin/pharmacies/create",
-    response_class=RedirectResponse,
     include_in_schema=INCLUDE_IN_SCHEMA,
 )
 def admin_create_pharmacy(
+    request: Request,
     name: str = Form(...),
     region_id: int = Form(...),
     address: str = Form(""),
+    # If checkbox exists in form, can stay as is
     is_active: bool = Form(True),
+    # Optional default Mon–Fri cutoff time from the form, e.g. "12:23"
+    default_weekday_cutoff_local: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     current: User = Depends(get_current_user),
 ):
     """
-    Create a new pharmacy (admin-only, non-AJAX, redirects).
+    Create a new pharmacy (admin-only).
+
+    If `default_weekday_cutoff_local` is provided as "HH:MM",
+    it will be applied as Mon–Fri local cutoff time.
+    Later you can still fine-tune all days via the weekly cutoff editor.
     """
     require_admin(current)
 
     region = session.get(Region, region_id)
     if not region:
+        if _is_ajax(request):
+            return JSONResponse(
+                status_code=404,
+                content={"ok": False, "error": "Region not found"},
+            )
         raise HTTPException(status_code=404, detail="Region not found")
 
     existing = session.exec(
         select(Pharmacy).where(Pharmacy.name == name, Pharmacy.region_id == region_id)
     ).first()
     if existing:
+        if _is_ajax(request):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Pharmacy with this name already exists in this region",
+                },
+            )
         raise HTTPException(
             status_code=400,
             detail="Pharmacy with this name already exists in this region",
         )
 
+    weekday_cutoff_time: Optional[time] = None
+    if default_weekday_cutoff_local:
+        try:
+            weekday_cutoff_time = _parse_local_hhmm(default_weekday_cutoff_local)
+        except ValueError as exc:
+            if _is_ajax(request):
+                return JSONResponse(
+                    status_code=400,
+                    content={"ok": False, "error": str(exc)},
+                )
+            raise HTTPException(status_code=400, detail=str(exc))
+
     pharmacy = Pharmacy(
-        name=name, region_id=region_id, address=address, is_active=is_active
+        name=name,
+        region_id=region_id,
+        address=address,
+        is_active=is_active,
+        cutoff_mon_local=weekday_cutoff_time,
+        cutoff_tue_local=weekday_cutoff_time,
+        cutoff_wed_local=weekday_cutoff_time,
+        cutoff_thu_local=weekday_cutoff_time,
+        cutoff_fri_local=weekday_cutoff_time,
     )
     session.add(pharmacy)
     session.commit()
+    session.refresh(pharmacy)
 
-    return RedirectResponse(url="/admin", status_code=303)
+    if not _is_ajax(request):
+        return RedirectResponse(url="/admin", status_code=303)
+
+    def _fmt(val: Optional[time]) -> Optional[str]:
+        return val.strftime("%H:%M") if val else None
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "pharmacy": {
+                "id": pharmacy.id,
+                "name": pharmacy.name,
+                "region_id": pharmacy.region_id,
+                "region_name": region.name,
+                "address": pharmacy.address or "",
+                "is_active": pharmacy.is_active,
+                "cutoffs": {
+                    "mon": _fmt(pharmacy.cutoff_mon_local),
+                    "tue": _fmt(pharmacy.cutoff_tue_local),
+                    "wed": _fmt(pharmacy.cutoff_wed_local),
+                    "thu": _fmt(pharmacy.cutoff_thu_local),
+                    "fri": _fmt(pharmacy.cutoff_fri_local),
+                    "sat": _fmt(pharmacy.cutoff_sat_local),
+                    "sun": _fmt(pharmacy.cutoff_sun_local),
+                },
+            },
+        }
+    )
 
 
 @router.post(
@@ -635,6 +799,80 @@ def admin_delete_pharmacy(
     session.commit()
 
     return JSONResponse({"ok": True})
+
+
+@router.post(
+    "/admin/pharmacies/{pharmacy_id}/cutoffs",
+    include_in_schema=INCLUDE_IN_SCHEMA,
+)
+def admin_update_pharmacy_cutoffs(
+    pharmacy_id: int,
+    mon: str = Form(""),
+    tue: str = Form(""),
+    wed: str = Form(""),
+    thu: str = Form(""),
+    fri: str = Form(""),
+    sat: str = Form(""),
+    sun: str = Form(""),
+    session: Session = Depends(get_session),
+    current: User = Depends(get_current_user),
+):
+    """
+    Update weekly cutoff times for a pharmacy via AJAX.
+    """
+    require_admin(current)
+
+    pharmacy = session.get(Pharmacy, pharmacy_id)
+    if not pharmacy:
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "error": "Pharmacy not found"},
+        )
+
+    # Parse incoming values; if any is invalid, return 400 JSON.
+    try:
+        mon_t = _parse_local_hhmm(mon)
+        tue_t = _parse_local_hhmm(tue)
+        wed_t = _parse_local_hhmm(wed)
+        thu_t = _parse_local_hhmm(thu)
+        fri_t = _parse_local_hhmm(fri)
+        sat_t = _parse_local_hhmm(sat)
+        sun_t = _parse_local_hhmm(sun)
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": str(exc)},
+        )
+
+    # Persist to DB
+    pharmacy.cutoff_mon_local = mon_t
+    pharmacy.cutoff_tue_local = tue_t
+    pharmacy.cutoff_wed_local = wed_t
+    pharmacy.cutoff_thu_local = thu_t
+    pharmacy.cutoff_fri_local = fri_t
+    pharmacy.cutoff_sat_local = sat_t
+    pharmacy.cutoff_sun_local = sun_t
+
+    session.add(pharmacy)
+    session.commit()
+
+    def _fmt(val: Optional[time]) -> Optional[str]:
+        return val.strftime("%H:%M") if val else None
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "cutoffs": {
+                "mon": _fmt(pharmacy.cutoff_mon_local),
+                "tue": _fmt(pharmacy.cutoff_tue_local),
+                "wed": _fmt(pharmacy.cutoff_wed_local),
+                "thu": _fmt(pharmacy.cutoff_thu_local),
+                "fri": _fmt(pharmacy.cutoff_fri_local),
+                "sat": _fmt(pharmacy.cutoff_sat_local),
+                "sun": _fmt(pharmacy.cutoff_sun_local),
+            },
+        }
+    )
 
 
 # -------------------------- Global settings --------------------------

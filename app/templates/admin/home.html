@@ -17,7 +17,7 @@
   <!--======= STATISTICS =======-->
   <details class="g-section" data-section-id="admin-stats" open>
     <summary>
-      <h2>📊 Statistics</h2>
+      <h2>Statistics</h2>
     </summary>
     <ul class="g-badges">
       <li class="badge">Users: {{ stats.counts.users or 0 }}</li>
@@ -33,14 +33,19 @@
   <!--======= USERS =======-->
   <details class="g-section" data-section-id="admin-users">
     <summary>
-      <h2>👤 Users ({{ stats.counts.users or 0 }})</h2>
+      <h2>Users ({{ stats.counts.users or 0 }})</h2>
     </summary>
 
     <!-- Create user -->
     <div class="g-card">
       <h3 class="g-subtitle">Create user</h3>
 
-      <form action="/admin/users/create" method="post" class="form-grid">
+      <form
+        action="/admin/users/create"
+        method="post"
+        class="form-grid js-ajax-form"
+        data-admin-action="user-create"
+      >
         <label class="form-label">
           Login
           <input type="text" name="login" required class="form-input">
@@ -202,7 +207,7 @@
                     class="js-ajax-form"
                     data-admin-action="user-toggle-active"
                   >
-                    <button type="submit" class="btn btn-secondary">
+                    <button type="submit" class="btn btn-secondary btn-toggle">
                       {{ 'Deactivate' if u.is_active else 'Activate' }}
                     </button>
                   </form>
@@ -234,13 +239,18 @@
   <!--======== REGIONS ========-->
   <details class="g-section" data-section-id="admin-regions">
     <summary>
-      <h2>🗺️ Regions ({{ stats.counts.regions or 0 }})</h2>
+      <h2>Regions ({{ stats.counts.regions or 0 }})</h2>
     </summary>
 
     <div class="g-card">
       <h3 class="g-subtitle">Create region</h3>
 
-      <form action="/admin/regions/create" method="post" class="form-grid">
+      <form
+        action="/admin/regions/create"
+        method="post"
+        class="form-grid js-ajax-form"
+        data-admin-action="region-create"
+      >
         <label class="form-label">
           Name
           <input type="text" name="name" required class="form-input">
@@ -290,7 +300,7 @@
                     class="js-ajax-form"
                     data-admin-action="region-toggle-active"
                   >
-                    <button type="submit" class="btn btn-secondary">
+                    <button type="submit" class="btn btn-secondary btn-toggle">
                       {{ 'Deactivate' if r.is_active else 'Activate' }}
                     </button>
                   </form>
@@ -322,7 +332,7 @@
   <!--======== PHARMACIES ========-->
   <details class="g-section" data-section-id="admin-pharmacies">
     <summary>
-      <h2>🏥 Pharmacies ({{ stats.counts.pharmacies or 0 }})</h2>
+      <h2>Pharmacies ({{ stats.counts.pharmacies or 0 }})</h2>
     </summary>
 
     <div class="g-card">
@@ -331,7 +341,12 @@
       {% set default_region_id = regions[0].id if regions else '' %}
       {% set default_region_name = regions[0].name if regions else 'No regions' %}
 
-      <form action="/admin/pharmacies/create" method="post" class="form-grid">
+      <form
+        action="/admin/pharmacies/create"
+        method="post"
+        class="form-grid js-ajax-form"
+        data-admin-action="pharmacy-create"
+      >
 
         <label class="form-label">
           Name
@@ -364,6 +379,19 @@
           <input type="text" name="address" class="form-input" placeholder="optional">
         </label>
 
+        <label class="form-label">
+          Default weekday cutoff (local)
+          <input
+            type="time"
+            name="default_weekday_cutoff_local"
+            class="form-input"
+            placeholder="HH:MM"
+          >
+          <small class="muted">
+            Optional. Local time (Europe/Berlin). Can be applied as Mon–Fri cutoff after creation.
+          </small>
+        </label>
+
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">Create</button>
         </div>
@@ -381,6 +409,7 @@
               <th>Name</th>
               <th>Region</th>
               <th>Active</th>
+              <th>Cutoff times (local)</th>
               <th>Assigned users</th>
               <th>Actions</th>
             </tr>
@@ -401,6 +430,141 @@
                 {% else %}
                   <span class="status-pill">No</span>
                 {% endif %}
+              </td>
+
+              <!-- NEW: weekly cutoff times summary + modal trigger -->
+              <td>
+                <div class="pharmacy-cutoff-summary">
+                  <div class="pharmacy-cutoff-summary-text muted">
+                    Mon {% if p.cutoff_mon_local %}{{ p.cutoff_mon_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Tue {% if p.cutoff_tue_local %}{{ p.cutoff_tue_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Wed {% if p.cutoff_wed_local %}{{ p.cutoff_wed_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Thu {% if p.cutoff_thu_local %}{{ p.cutoff_thu_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Fri {% if p.cutoff_fri_local %}{{ p.cutoff_fri_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Sat {% if p.cutoff_sat_local %}{{ p.cutoff_sat_local.strftime('%H:%M') }}{% else %}—{% endif %},
+                    Sun {% if p.cutoff_sun_local %}{{ p.cutoff_sun_local.strftime('%H:%M') }}{% else %}—{% endif %}
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-xs js-open-cutoff-modal"
+                    data-pharmacy-id="{{ p.id }}"
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                <!-- Cutoff modal (backdrop) -->
+                <div class="cutoff-modal-backdrop" data-cutoff-modal="{{ p.id }}" hidden>
+                  <div class="cutoff-modal" role="dialog" aria-modal="true" aria-label="Edit cutoff times">
+                    <div class="cutoff-modal-header">
+                      <h4>Cutoff times – {{ p.name }}</h4>
+                      <button type="button" class="cutoff-modal-close js-close-cutoff-modal" aria-label="Close">×</button>
+                    </div>
+
+                    <div class="cutoff-modal-body">
+                      <p class="muted">
+                        Local times (Europe/Berlin). Courier is late if pickup is created after the cutoff.
+                      </p>
+
+                      <form
+                        action="/admin/pharmacies/{{ p.id }}/cutoffs"
+                        method="post"
+                        class="js-ajax-form pharmacy-cutoffs-form"
+                        data-admin-action="pharmacy-cutoffs-update"
+                      >
+                        <div class="cutoffs-grid">
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Mon</span>
+                            <input
+                              type="time"
+                              name="mon"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_mon_local.strftime('%H:%M') if p.cutoff_mon_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Tue</span>
+                            <input
+                              type="time"
+                              name="tue"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_tue_local.strftime('%H:%M') if p.cutoff_tue_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Wed</span>
+                            <input
+                              type="time"
+                              name="wed"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_wed_local.strftime('%H:%M') if p.cutoff_wed_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Thu</span>
+                            <input
+                              type="time"
+                              name="thu"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_thu_local.strftime('%H:%M') if p.cutoff_thu_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Fri</span>
+                            <input
+                              type="time"
+                              name="fri"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_fri_local.strftime('%H:%M') if p.cutoff_fri_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Sat</span>
+                            <input
+                              type="time"
+                              name="sat"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_sat_local.strftime('%H:%M') if p.cutoff_sat_local else '' }}"
+                            >
+                          </div>
+                          <div class="cutoff-row">
+                            <span class="cutoff-label">Sun</span>
+                            <input
+                              type="time"
+                              name="sun"
+                              class="form-input form-input-sm"
+                              value="{{ p.cutoff_sun_local.strftime('%H:%M') if p.cutoff_sun_local else '' }}"
+                            >
+                          </div>
+                        </div>
+
+                        <hr class="cutoff-divider">
+
+                        <div class="cutoff-row cutoff-weekdays-row">
+                          <span class="cutoff-label">Mon–Fri</span>
+                          <input
+                            type="time"
+                            name="weekdays_time"
+                            class="form-input form-input-sm"
+                          >
+                          <button type="button" class="btn-xs btn-ghost js-apply-weekdays">
+                            Apply to Mon–Fri
+                          </button>
+                        </div>
+
+                        <p class="muted cutoff-hint">
+                          After applying Mon–Fri time, please review all days before saving.
+                        </p>
+
+                        <div class="cutoffs-actions">
+                          <button type="submit" class="btn btn-secondary btn-sm-inline">
+                            Save
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
               </td>
 
               <td>
@@ -467,7 +631,7 @@
                     class="js-ajax-form"
                     data-admin-action="pharmacy-toggle-active"
                   >
-                    <button type="submit" class="btn btn-secondary">
+                    <button type="submit" class="btn btn-secondary btn-toggle">
                       {{ 'Deactivate' if p.is_active else 'Activate' }}
                     </button>
                   </form>
@@ -497,40 +661,4 @@
   </details>
 
 </section>
-
-<!-- Inline JS: chip dropdown -->
-<script>
-  document.addEventListener("click", function (event) {
-    const chip = event.target.closest(".chip-dropdown");
-    if (chip) {
-      const w = chip.closest(".chip-dropdown-wrapper");
-      w.classList.toggle("is-open");
-      return;
-    }
-
-    const item = event.target.closest(".chip-dropdown-wrapper .dropdown-item");
-    if (item) {
-      const w = item.closest(".chip-dropdown-wrapper");
-      const hidden = w.querySelector("input[type='hidden']");
-      const label = w.querySelector(".chip-main-text");
-
-      hidden.value = item.dataset.value;
-      label.textContent = item.textContent.trim();
-
-      w.querySelectorAll(".dropdown-item").forEach(b => {
-        b.classList.toggle("is-active", b === item);
-      });
-
-      w.classList.remove("is-open");
-      return;
-    }
-
-    if (!event.target.closest(".chip-dropdown-wrapper")) {
-      document
-        .querySelectorAll(".chip-dropdown-wrapper.is-open")
-        .forEach(w => w.classList.remove("is-open"));
-    }
-  });
-</script>
-
 {% endblock %}

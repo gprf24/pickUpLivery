@@ -8,7 +8,7 @@
  *  - Mobile menu toggle
  *  - Admin AJAX forms (prevent full page reload + live DOM updates)
  *  - Admin <details> state persistence (open/closed)
- *  - Admin toast alerts for errors
+ *  - Admin toast alerts for errors / info / success
  */
 
 // ------------------------------------------------------
@@ -56,9 +56,6 @@ function previewFile(input) {
 // ------------------------------------------------------
 // Admin toast alerts
 // ------------------------------------------------------
-// ------------------------------------------------------
-// Admin toast alerts
-// ------------------------------------------------------
 function showAdminAlert(message, type = "error") {
   // type: "error" | "success" | "info"
   const containerId = "admin-alert-container";
@@ -87,11 +84,9 @@ function showAdminAlert(message, type = "error") {
   alertEl.setAttribute("aria-live", "assertive");
   alertEl.setAttribute("aria-atomic", "true");
 
-  // Icon
   const iconEl = document.createElement("div");
   iconEl.className = "admin-alert__icon";
 
-  // Body
   const bodyEl = document.createElement("div");
   bodyEl.className = "admin-alert__body";
 
@@ -106,7 +101,6 @@ function showAdminAlert(message, type = "error") {
   bodyEl.appendChild(headerEl);
   bodyEl.appendChild(textEl);
 
-  // Close button
   const actionEl = document.createElement("div");
   actionEl.className = "admin-alert__action";
 
@@ -116,7 +110,6 @@ function showAdminAlert(message, type = "error") {
   closeBtn.setAttribute("aria-label", "Dismiss notification");
   closeBtn.innerHTML = '<span aria-hidden="true">✕</span>';
 
-  // Manual dismiss
   closeBtn.addEventListener("click", () => {
     alertEl.classList.remove("is-visible");
     setTimeout(() => {
@@ -128,19 +121,16 @@ function showAdminAlert(message, type = "error") {
 
   actionEl.appendChild(closeBtn);
 
-  // Assemble
   alertEl.appendChild(iconEl);
   alertEl.appendChild(bodyEl);
   alertEl.appendChild(actionEl);
 
   container.appendChild(alertEl);
 
-  // Fade / slide in
   requestAnimationFrame(() => {
     alertEl.classList.add("is-visible");
   });
 
-  // Auto-hide after 4s (matches CSS countdown animation)
   setTimeout(() => {
     alertEl.classList.remove("is-visible");
     setTimeout(() => {
@@ -151,6 +141,18 @@ function showAdminAlert(message, type = "error") {
   }, 4000);
 }
 
+// ------------------------------------------------------
+// Helper: close all chip dropdowns
+// ------------------------------------------------------
+function closeAllChipDropdowns(except) {
+  document
+    .querySelectorAll(".chip-dropdown-wrapper.is-open")
+    .forEach((w) => {
+      if (w !== except) {
+        w.classList.remove("is-open");
+      }
+    });
+}
 
 // ------------------------------------------------------
 // DOMContentLoaded: init everything
@@ -208,10 +210,163 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ----------------------------------------------------
+  // ADMIN: CHIP DROPDOWNS (Role, Region, Assign user, GPS mode)
+  // ----------------------------------------------------
+  function initChipDropdowns() {
+    const wrappers = document.querySelectorAll(".chip-dropdown-wrapper");
+    if (!wrappers.length) return;
+
+    wrappers.forEach((wrapper) => {
+      // -----------------------------------------------
+      // IMPORTANT: skip chip dropdowns on the History page.
+      //
+      // History page (history.html) defines its own custom
+      // JS logic for:
+      //  - filter chips (region / pharmacy / driver)
+      //  - export format chip (CSV / Excel)
+      //
+      // If we also attach global handlers here, those
+      // dropdowns will get double-initialized and behave
+      // incorrectly. So we ignore:
+      //  - any wrapper inside #historyFilters
+      //  - the .export-format-wrapper chip
+      // -----------------------------------------------
+      if (
+        wrapper.closest("#historyFilters") || // region / pharmacy / driver filters
+        wrapper.classList.contains("export-format-wrapper") // export format chip
+      ) {
+        return;
+      }
+
+      // Prevent double initialization
+      if (wrapper.dataset.chipInitialized === "1") return;
+      wrapper.dataset.chipInitialized = "1";
+
+      const button = wrapper.querySelector(".chip-dropdown");
+      const menu = wrapper.querySelector(".dropdown-menu");
+      const hiddenInput = wrapper.querySelector('input[type="hidden"]');
+      const mainText = wrapper.querySelector(".chip-main-text");
+
+      if (!button || !menu) return;
+
+      button.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const isOpen = wrapper.classList.contains("is-open");
+        closeAllChipDropdowns(wrapper);
+        if (!isOpen) {
+          wrapper.classList.add("is-open");
+        } else {
+          wrapper.classList.remove("is-open");
+        }
+      });
+
+      menu.querySelectorAll(".dropdown-item").forEach((item) => {
+        item.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          const value = item.dataset.value || "";
+          const label = item.textContent.trim();
+
+          menu.querySelectorAll(".dropdown-item").forEach((i) => {
+            i.classList.toggle("is-active", i === item);
+          });
+
+          if (mainText && label) {
+            mainText.textContent = label;
+          }
+
+          if (hiddenInput && value) {
+            hiddenInput.value = value;
+          }
+
+          wrapper.classList.remove("is-open");
+        });
+      });
+    });
+  }
+
+  initChipDropdowns();
+
+  // ----------------------------------------------------
+  // ADMIN: cutoff modal open / close
+  // ----------------------------------------------------
+  function openCutoffModal(pharmacyId) {
+    const selector = `.cutoff-modal-backdrop[data-cutoff-modal="${pharmacyId}"]`;
+    const backdrop = document.querySelector(selector);
+    if (!backdrop) return;
+    backdrop.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+
+  function closeCutoffModal(backdrop) {
+    if (!backdrop) return;
+    backdrop.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  document.querySelectorAll(".js-open-cutoff-modal").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.pharmacyId;
+      if (!id) return;
+      openCutoffModal(id);
+    });
+  });
+
+  document.querySelectorAll(".cutoff-modal-backdrop").forEach((backdrop) => {
+    backdrop.addEventListener("click", (ev) => {
+      if (ev.target === backdrop) {
+        closeCutoffModal(backdrop);
+      }
+    });
+
+    const closeBtn = backdrop.querySelector(".js-close-cutoff-modal");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => closeCutoffModal(backdrop));
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      document
+        .querySelectorAll(".cutoff-modal-backdrop:not([hidden])")
+        .forEach((backdrop) => {
+          closeCutoffModal(backdrop);
+        });
+    }
+  });
+
+  // ----------------------------------------------------
+  // ADMIN: helper for weekday cutoffs UI (Mon–Fri)
+  // ----------------------------------------------------
+  document.querySelectorAll(".pharmacy-cutoffs-form").forEach((form) => {
+    const applyBtn = form.querySelector(".js-apply-weekdays");
+    const weekdaysInput = form.querySelector('input[name="weekdays_time"]');
+
+    if (!applyBtn || !weekdaysInput) return;
+
+    applyBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const value = weekdaysInput.value || "";
+      if (!value) {
+        showAdminAlert("Set Mon–Fri time first before applying.", "info");
+        return;
+      }
+
+      const days = ["mon", "tue", "wed", "thu", "fri"];
+      days.forEach((name) => {
+        const inp = form.querySelector(`input[name="${name}"]`);
+        if (inp) {
+          inp.value = value;
+        }
+      });
+
+      showAdminAlert("Applied Mon–Fri time to Mon–Fri fields.", "success");
+    });
+  });
+
   // ====================================================
   // ADMIN: AJAX forms + LIVE DOM UPDATES
   // ====================================================
-
   function getSubmitButton(form) {
     let btn = form.querySelector('button[type="submit"]');
     if (!btn) btn = form.querySelector("button");
@@ -243,7 +398,269 @@ document.addEventListener("DOMContentLoaded", () => {
       return isActive;
     }
 
-    // 1) Toggle user active
+    // -----------------------------
+    // 0) CREATE: user / region / pharmacy
+    // -----------------------------
+
+    // 0.1. Create user
+    if (actionType === "user-create") {
+      if (!data || !data.ok || !data.user) {
+        showAdminAlert("User was not created. Invalid response.", "error");
+        return;
+      }
+
+      const u = data.user;
+      const roleLabel =
+        u.role === "admin"
+          ? "Admin"
+          : u.role === "driver"
+          ? "Driver"
+          : u.role;
+
+      const gpsMode = u.gps_mode || "inherit";
+
+      const usersSection = document.querySelector(
+        'details.g-section[data-section-id="admin-users"]'
+      );
+      if (!usersSection) return;
+      const tbody = usersSection.querySelector("table tbody");
+      if (!tbody) return;
+
+      const row = document.createElement("tr");
+      row.dataset.userId = u.id;
+
+      row.innerHTML = `
+        <td>${u.id}</td>
+        <td>${u.login}</td>
+        <td>${roleLabel}</td>
+
+        <td>
+          ${
+            u.is_active
+              ? '<span class="status-pill status-ok">Yes</span>'
+              : '<span class="status-pill">No</span>'
+          }
+        </td>
+
+        <td>
+          <div class="user-gps-block">
+            <form
+              action="/admin/users/${u.id}/gps"
+              method="post"
+              class="gps-inline-form js-ajax-form"
+              data-admin-action="user-gps-update"
+            >
+              <div class="chip-dropdown-wrapper gps-mode-wrapper">
+                <button type="button" class="chip chip-dropdown chip-gps">
+                  <span class="chip-main-text">
+                    ${
+                      gpsMode === "inherit"
+                        ? "Inherit global"
+                        : gpsMode === "require"
+                        ? "Require GPS"
+                        : "GPS not required"
+                    }
+                  </span>
+                  <span class="chip-caret"></span>
+                </button>
+
+                <div class="dropdown-menu">
+                  <button type="button"
+                          class="dropdown-item ${
+                            gpsMode === "inherit" ? "is-active" : ""
+                          }"
+                          data-value="inherit">
+                    Inherit global
+                  </button>
+                  <button type="button"
+                          class="dropdown-item ${
+                            gpsMode === "require" ? "is-active" : ""
+                          }"
+                          data-value="require">
+                    Require GPS
+                  </button>
+                  <button type="button"
+                          class="dropdown-item ${
+                            gpsMode === "no" ? "is-active" : ""
+                          }"
+                          data-value="no">
+                    GPS not required
+                  </button>
+                </div>
+
+                <input type="hidden" name="gps_mode" value="${gpsMode}">
+              </div>
+
+              <button type="submit" class="btn btn-secondary btn-sm-inline">Update</button>
+            </form>
+          </div>
+        </td>
+
+        <td>
+          <div class="form-actions form-actions-row">
+
+            <form
+              action="/admin/users/${u.id}/password"
+              method="post"
+              class="form-grid js-ajax-form"
+              data-admin-action="user-password-change"
+            >
+              <input type="password" name="new_password" placeholder="new password" minlength="6" required class="form-input">
+              <button type="submit" class="btn btn-primary">Set</button>
+            </form>
+
+            <form
+              action="/admin/users/${u.id}/toggle-active"
+              method="post"
+              class="js-ajax-form"
+              data-admin-action="user-toggle-active"
+            >
+              <button type="submit" class="btn btn-secondary btn-toggle">
+                ${u.is_active ? "Deactivate" : "Activate"}
+              </button>
+            </form>
+
+            <hr class="newdevider" />
+
+            <form
+              action="/admin/users/${u.id}/delete"
+              method="post"
+              class="js-ajax-form"
+              data-admin-action="user-delete"
+              onsubmit="return confirm('Delete user ${u.login}? This cannot be undone.');"
+            >
+              <button type="submit" class="btn btn-primary btn-danger">Delete</button>
+            </form>
+
+          </div>
+        </td>
+      `;
+
+      tbody.appendChild(row);
+
+      // Добавляем нового юзера в dropdown'ы "Assign user" во всех аптеках
+      const assignWrappers = document.querySelectorAll(".assign-user-wrapper");
+      assignWrappers.forEach((wrapper) => {
+        const menu = wrapper.querySelector(".dropdown-menu");
+        const mainText = wrapper.querySelector(".chip-main-text");
+        const hiddenInput = wrapper.querySelector('input[name="user_id"]');
+        if (!menu) return;
+
+        // уже есть такой id?
+        const exists = menu.querySelector(
+          `.dropdown-item[data-value="${u.id}"]`
+        );
+        if (exists) return;
+
+        const itemsBefore = menu.querySelectorAll(".dropdown-item").length;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className =
+          "dropdown-item" + (itemsBefore === 0 ? " is-active" : "");
+        btn.dataset.value = u.id;
+        btn.textContent = u.login;
+        menu.appendChild(btn);
+
+        if (itemsBefore === 0) {
+          if (mainText) mainText.textContent = u.login;
+          if (hiddenInput) hiddenInput.value = u.id;
+        }
+      });
+
+      // Re-initialize dropdowns (new row + new menu items)
+      initChipDropdowns();
+
+      form.reset();
+      showAdminAlert(`User "${u.login}" created `, "success");
+      return;
+    }
+
+    // 0.2. Create region
+    if (actionType === "region-create") {
+      if (!data || !data.ok || !data.region) {
+        showAdminAlert("Region was not created. Invalid response.", "error");
+        return;
+      }
+
+      const r = data.region;
+
+      const regionsSection = document.querySelector(
+        'details.g-section[data-section-id="admin-regions"]'
+      );
+      if (!regionsSection) return;
+      const tbody = regionsSection.querySelector("table tbody");
+      if (!tbody) return;
+
+      const row = document.createElement("tr");
+      row.dataset.regionId = r.id;
+
+      row.innerHTML = `
+        <td>${r.id}</td>
+        <td>${r.name}</td>
+        <td>
+          ${
+            r.is_active
+              ? '<span class="status-pill status-ok">Yes</span>'
+              : '<span class="status-pill">No</span>'
+          }
+        </td>
+        <td>
+          <div class="form-actions form-actions-row">
+            <form
+              action="/admin/regions/${r.id}/toggle"
+              method="post"
+              class="js-ajax-form"
+              data-admin-action="region-toggle-active"
+            >
+              <button type="submit" class="btn btn-secondary btn-toggle">
+                ${r.is_active ? "Deactivate" : "Activate"}
+              </button>
+            </form>
+
+            <hr class="newdevider" />
+
+            <form
+              action="/admin/regions/${r.id}/delete"
+              method="post"
+              class="js-ajax-form"
+              data-admin-action="region-delete"
+              onsubmit="return confirm('Delete region ${r.name}? This cannot be undone.');"
+            >
+              <button type="submit" class="btn btn-primary btn-danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      `;
+
+      tbody.appendChild(row);
+      form.reset();
+      showAdminAlert(`Region "${r.name}" created `, "success");
+      return;
+    }
+
+    // 0.3. Create pharmacy
+    if (actionType === "pharmacy-create") {
+      if (!data || !data.ok || !data.pharmacy) {
+        showAdminAlert("Pharmacy was not created. Invalid response.", "error");
+        return;
+      }
+
+      const ph = data.pharmacy;
+      showAdminAlert(`Pharmacy "${ph.name}" created `, "success");
+
+      // сложная строка в таблице — проще перезагрузить страницу
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+
+      return;
+    }
+
+    // -----------------------------
+    // 1) Toggle active user / region / pharmacy
+    // -----------------------------
+
     if (actionType === "user-toggle-active") {
       const row = form.closest("tr");
       if (!row) return;
@@ -254,10 +671,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (btn && isActive !== null) {
         btn.textContent = isActive ? "Deactivate" : "Activate";
       }
+
+      if (isActive !== null) {
+        const loginCell =
+          row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
+        const msg = isActive
+          ? `User "${loginCell}" activated `
+          : `User "${loginCell}" deactivated`;
+        showAdminAlert(msg, "success");
+      }
       return;
     }
 
-    // 2) Toggle region active (update pill and button text)
     if (actionType === "region-toggle-active") {
       const row = form.closest("tr");
       if (!row) return;
@@ -268,10 +693,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (btn && isActive !== null) {
         btn.textContent = isActive ? "Deactivate" : "Activate";
       }
+
+      if (isActive !== null) {
+        const nameCell =
+          row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
+        const msg = isActive
+          ? `Region "${nameCell}" activated `
+          : `Region "${nameCell}" deactivated`;
+        showAdminAlert(msg, "success");
+      }
       return;
     }
 
-    // 3) Toggle pharmacy active (also pill + button)
     if (actionType === "pharmacy-toggle-active") {
       const row = form.closest("tr");
       if (!row) return;
@@ -282,12 +715,25 @@ document.addEventListener("DOMContentLoaded", () => {
       if (btn && isActive !== null) {
         btn.textContent = isActive ? "Deactivate" : "Activate";
       }
+
+      if (isActive !== null) {
+        const nameCell =
+          row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
+        const msg = isActive
+          ? `Pharmacy "${nameCell}" activated `
+          : `Pharmacy "${nameCell}" deactivated`;
+        showAdminAlert(msg, "success");
+      }
       return;
     }
 
-    // 4) Assign user to pharmacy
+    // -----------------------------
+    // 2) Assign / unassign user
+    // -----------------------------
+
     if (actionType === "pharmacy-assign-user") {
       if (data && data.already_assigned) {
+        showAdminAlert("User is already assigned to this pharmacy.", "info");
         return;
       }
 
@@ -302,14 +748,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!userId) return;
 
       const assignChip = form.querySelector(".chip-main-text");
-      const userName = assignChip
-        ? assignChip.textContent.trim()
-        : "User";
+      const userName = assignChip ? assignChip.textContent.trim() : "User";
 
       const existingChip = chipsContainer.querySelector(
         'form.assigned-chip input[name="user_id"][value="' + userId + '"]'
       );
       if (existingChip) {
+        showAdminAlert("User is already assigned to this pharmacy.", "info");
         return;
       }
 
@@ -347,37 +792,195 @@ document.addEventListener("DOMContentLoaded", () => {
       chipForm.appendChild(btnRemove);
 
       chipsContainer.appendChild(chipForm);
+
+      showAdminAlert(`User "${userName}" assigned `, "success");
       return;
     }
 
-    // 5) Unassign user from pharmacy
     if (actionType === "pharmacy-unassign-user") {
       const chipForm = form.closest(".assigned-chip") || form;
+      let userName = "";
+      if (chipForm) {
+        const nameSpan = chipForm.querySelector(".assigned-name");
+        if (nameSpan) userName = nameSpan.textContent.trim();
+      }
+
       if (chipForm && chipForm.parentElement) {
         chipForm.parentElement.removeChild(chipForm);
+      }
+
+      if (userName) {
+        showAdminAlert(`User "${userName}" unassigned`, "success");
+      } else {
+        showAdminAlert("User unassigned", "success");
       }
       return;
     }
 
-    // 6) Delete user / region / pharmacy -> remove table row
+    // -----------------------------
+    // 3) Delete user / region / pharmacy
+    // -----------------------------
+
     if (
       actionType === "user-delete" ||
       actionType === "region-delete" ||
       actionType === "pharmacy-delete"
     ) {
       const row = form.closest("tr");
-      if (row && row.parentElement) {
-        row.parentElement.removeChild(row);
+      let label = "";
+      if (row) {
+        if (row.cells && row.cells[1]) {
+          label = row.cells[1].textContent.trim();
+        }
+        if (row.parentElement) {
+          row.parentElement.removeChild(row);
+        }
       }
+
+      let msg = "Item deleted.";
+      if (actionType === "user-delete") {
+        msg = label ? `User "${label}" deleted.` : "User deleted.";
+      } else if (actionType === "region-delete") {
+        msg = label ? `Region "${label}" deleted.` : "Region deleted.";
+      } else if (actionType === "pharmacy-delete") {
+        msg = label ? `Pharmacy "${label}" deleted.` : "Pharmacy deleted.";
+      }
+
+      showAdminAlert(msg, "success");
       return;
     }
 
-    // 7) GPS mode update → show success toast
-if (actionType === "user-gps-update") {
-  showAdminAlert("GPS setting updated ✓", "success");
-  return;
-}
+    // -----------------------------
+    // 4) Other: GPS / password / cutoffs
+    // -----------------------------
 
+    if (actionType === "user-gps-update") {
+      showAdminAlert("GPS setting updated ", "success");
+      return;
+    }
+
+    if (actionType === "user-password-change") {
+      const pwdInput = form.querySelector('input[name="new_password"]');
+      if (pwdInput) pwdInput.value = "";
+      showAdminAlert("Password updated ", "success");
+      return;
+    }
+
+    if (actionType === "pharmacy-cutoff-update") {
+      const block = form.closest(".pharmacy-cutoff-block");
+      if (!block) {
+        showAdminAlert("Cutoff updated, but UI block not found.", "info");
+        return;
+      }
+
+      const currentNode = block.querySelector(".pharmacy-cutoff-current");
+      if (!currentNode) {
+        showAdminAlert("Cutoff updated, but label container missing.", "info");
+        return;
+      }
+
+      const timeInput = form.querySelector(
+        'input[name="latest_pickup_time_local"]'
+      );
+      if (timeInput) {
+        timeInput.value = "";
+      }
+
+      let utcLabel = null;
+      let hasCutoff = true;
+
+      if (data) {
+        if (typeof data.latest_pickup_time_utc_label === "string") {
+          utcLabel = data.latest_pickup_time_utc_label.trim();
+        } else if (typeof data.latest_pickup_time_utc === "string") {
+          const raw = data.latest_pickup_time_utc.trim();
+
+          if (/^\d{2}:\d{2}(:\d{2})?$/.test(raw)) {
+            utcLabel = raw.slice(0, 5);
+          } else if (raw.length >= 16) {
+            utcLabel = raw.slice(11, 16);
+          } else {
+            utcLabel = raw;
+          }
+        } else if (data.latest_pickup_time_utc === null) {
+          hasCutoff = false;
+        }
+
+        if (data.has_cutoff === false) {
+          hasCutoff = false;
+        }
+      }
+
+      let pill = currentNode.querySelector(".status-pill");
+      let muted = currentNode.querySelector(".muted");
+
+      if (!hasCutoff) {
+        if (pill && pill.parentElement) {
+          pill.parentElement.removeChild(pill);
+        }
+        if (!muted) {
+          muted = document.createElement("span");
+          muted.className = "muted";
+          currentNode.innerHTML = "";
+          currentNode.appendChild(muted);
+        }
+        muted.textContent = "No cutoff";
+      } else if (utcLabel) {
+        const labelText = `${utcLabel} UTC`;
+
+        if (!pill) {
+          pill = document.createElement("span");
+          pill.className = "status-pill status-ok";
+          currentNode.innerHTML = "";
+          currentNode.appendChild(pill);
+        } else {
+          pill.classList.add("status-ok");
+        }
+        pill.textContent = labelText;
+
+        if (muted && muted.parentElement) {
+          muted.parentElement.removeChild(muted);
+        }
+      }
+
+      showAdminAlert("Cutoff time updated ", "success");
+      return;
+    }
+
+    if (actionType === "pharmacy-cutoffs-update") {
+      const row = form.closest("tr");
+      if (row) {
+        const summaryText = row.querySelector(".pharmacy-cutoff-summary-text");
+        if (summaryText) {
+          const days = [
+            { name: "mon", label: "Mon" },
+            { name: "tue", label: "Tue" },
+            { name: "wed", label: "Wed" },
+            { name: "thu", label: "Thu" },
+            { name: "fri", label: "Fri" },
+            { name: "sat", label: "Sat" },
+            { name: "sun", label: "Sun" },
+          ];
+
+          const parts = days.map((d) => {
+            const inp = form.querySelector(`input[name="${d.name}"]`);
+            const val = inp && inp.value ? inp.value : "—";
+            return `${d.label} ${val || "—"}`;
+          });
+
+          summaryText.textContent = parts.join(", ");
+        }
+      }
+
+      const backdrop = form.closest(".cutoff-modal-backdrop");
+      if (backdrop) {
+        backdrop.hidden = true;
+      }
+      document.body.classList.remove("modal-open");
+
+      showAdminAlert("Weekly cutoff times updated ", "success");
+      return;
+    }
   }
 
   async function handleAjaxFormSubmit(event) {
@@ -408,7 +1011,6 @@ if (actionType === "user-gps-update") {
         headers: { "X-Requested-With": "XMLHttpRequest" },
       });
 
-      // ----- HTTP error (4xx / 5xx) -----
       if (!response.ok) {
         console.error("Admin AJAX error:", response.status, response.statusText);
 
@@ -430,11 +1032,12 @@ if (actionType === "user-gps-update") {
             console.warn("Failed to parse JSON error", e);
           }
         } else {
-          // try to read plain text (e.g. HTML error)
           try {
             const text = await response.text();
             console.log("Admin error text:", text);
-          } catch {}
+          } catch {
+            // ignore
+          }
         }
 
         showAdminAlert(errorMessage, "error");
@@ -446,7 +1049,6 @@ if (actionType === "user-gps-update") {
         return;
       }
 
-      // Successful response
       let data = null;
       const ct = response.headers.get("content-type") || "";
       if (ct.includes("application/json")) {
@@ -464,16 +1066,17 @@ if (actionType === "user-gps-update") {
 
       applyAdminDomUpdate(form, action, data);
 
-      // For admin-action forms: only re-enable the button, the label is already updated
       if (hasAdminAction) {
         if (submitBtn) {
           submitBtn.disabled = false;
+          if (!submitBtn.textContent && originalBtnText) {
+            submitBtn.textContent = originalBtnText;
+          }
         }
         return;
       }
 
-      // Generic AJAX: “Saved ✓” -> revert label back
-      if (submitBtn) submitBtn.textContent = "Saved ✓";
+      if (submitBtn) submitBtn.textContent = "Saved ";
 
       setTimeout(() => {
         if (submitBtn && originalBtnText) {
@@ -533,28 +1136,43 @@ if (actionType === "user-gps-update") {
     });
   });
 
-  // (optional) prevent reload on active nav item — left commented out
+  // ----------------------------------------------------
+  // Global close for chip dropdowns (attach ONCE)
+  // ----------------------------------------------------
+  document.addEventListener("click", (ev) => {
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
 
-  // ----------------------------------------------------
-  // OPTIONAL: prevent reload when clicking active nav item
-  // (kept commented for now)
-  // ----------------------------------------------------
-  // function preventReloadOnActive(selector) {
-  //   document.querySelectorAll(selector).forEach((link) => {
-  //     link.addEventListener("click", (ev) => {
-  //       const href = link.getAttribute("href");
-  //       if (!href) return;
-  //
-  //       const currentPath = window.location.pathname || "/";
-  //       if (href === currentPath) {
-  //         ev.preventDefault();
-  //       }
-  //     });
-  //   });
-  // }
-  //
-  // preventReloadOnActive(".sidebar-nav .sidebar-link");
-  // preventReloadOnActive(".mobile-menu-links .mobile-link");
-  // preventReloadOnActive(".sidebar-logo .sidebar-brand");
-  // preventReloadOnActive(".mobile-header .mobile-brand");
+    const wrapper = target.closest(".chip-dropdown-wrapper");
+    if (!wrapper) {
+      closeAllChipDropdowns(null);
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      closeAllChipDropdowns(null);
+    }
+  });
 });
+
+
+// Optional: prevent reload on active nav item (kept commented)
+// function preventReloadOnActive(selector) {
+//   document.querySelectorAll(selector).forEach((link) => {
+ //     link.addEventListener("click", (ev) => {
+ //       const href = link.getAttribute("href");
+ //       if (!href) return;
+ //
+ //       const currentPath = window.location.pathname || "/";
+ //       if (href === currentPath) {
+ //         ev.preventDefault();
+ //       }
+ //     });
+ //   });
+// }
+//
+// preventReloadOnActive(".sidebar-nav .sidebar-link");
+// preventReloadOnActive(".mobile-menu-links .mobile-link");
+// preventReloadOnActive(".sidebar-logo .sidebar-brand");
+// preventReloadOnActive(".mobile-header .mobile-brand");

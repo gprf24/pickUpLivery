@@ -1,4 +1,3 @@
-# app/api/v1/pickups.py
 """
 Pickup routes for up to 4 distinct photo slots (image1..image4).
 
@@ -7,12 +6,15 @@ Key features:
 - Enforces access control for pharmacies and photos.
 - Limits daily pickups per (driver, pharmacy) using AppSettings.
 - Enforces GPS requirement based on global + per-user settings.
+- NEW: Tracks timing relative to pharmacy weekly cutoff (on_time / late / no_cutoff),
+  storing a per-pickup UTC cutoff snapshot (cutoff_at_utc).
 """
 
 from __future__ import annotations
 
 from datetime import datetime, time, timezone
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -30,6 +32,9 @@ from app.db.models.settings import AppSettings
 from app.db.models.user import User
 
 router = APIRouter()
+
+# Local timezone used for weekly cutoff configuration
+TZ_DE = ZoneInfo("Europe/Berlin")
 
 
 # ---------------------------------------------------------------------
@@ -102,6 +107,74 @@ def _resolve_gps_requirement(user: User, settings: AppSettings) -> bool:
     return bool(settings.require_pickup_location_global)
 
 
+def _get_cutoff_for_pickup(
+    pharmacy: Pharmacy,
+    now_utc: datetime,
+) -> Optional[datetime]:
+    """
+    For a given pharmacy and current UTC time, compute the *timestamp*
+    of today's cutoff in UTC, based on weekly local cutoff config.
+
+    Steps:
+      - Convert now_utc to local DE time.
+      - Take weekday (0 = Monday ... 6 = Sunday).
+      - Read the corresponding cutoff_*_local from Pharmacy.
+      - If None → no cutoff for today.
+      - Else → build local datetime for today + that time, then convert to UTC.
+    """
+    # Convert current UTC timestamp to local DE time
+    now_local = now_utc.astimezone(TZ_DE)
+    weekday = now_local.weekday()  # 0 = Monday ... 6 = Sunday
+
+    # Map weekday → pharmacy cutoff field
+    cutoff_map = {
+        0: pharmacy.cutoff_mon_local,
+        1: pharmacy.cutoff_tue_local,
+        2: pharmacy.cutoff_wed_local,
+        3: pharmacy.cutoff_thu_local,
+        4: pharmacy.cutoff_fri_local,
+        5: pharmacy.cutoff_sat_local,
+        6: pharmacy.cutoff_sun_local,
+    }
+    cutoff_local_time = cutoff_map.get(weekday)
+
+    if cutoff_local_time is None:
+        # No cutoff configured for this weekday
+        return None
+
+    # Build local datetime "today at cutoff time"
+    cutoff_local_dt = now_local.replace(
+        hour=cutoff_local_time.hour,
+        minute=cutoff_local_time.minute,
+        second=cutoff_local_time.second,
+        microsecond=0,
+    )
+
+    # Convert local cutoff datetime back to UTC
+    cutoff_utc = cutoff_local_dt.astimezone(timezone.utc)
+    return cutoff_utc
+
+
+def _compute_timing_status(
+    now_utc: datetime,
+    cutoff_at_utc: Optional[datetime],
+) -> str:
+    """
+    Compute timing_status given a UTC timestamp and an optional cutoff timestamp.
+
+    Returns:
+        - "no_cutoff" if cutoff_at_utc is None
+        - "late" if now_utc is strictly after cutoff_at_utc
+        - "on_time" otherwise
+    """
+    if cutoff_at_utc is None:
+        return "no_cutoff"
+
+    if now_utc > cutoff_at_utc:
+        return "late"
+    return "on_time"
+
+
 # ---------------------------------------------------------------------
 # GET: pickup form
 # ---------------------------------------------------------------------
@@ -170,6 +243,8 @@ async def create_pickup(
     - Enforces GPS requirement via per-user + global settings.
     - Enforces daily pickup limit via AppSettings.allowed_pickups_per_day
       per (driver, pharmacy).
+    - NEW: Stores weekly-based cutoff snapshot (cutoff_at_utc) and timing_status
+      (on_time / late / no_cutoff) for each pickup.
     """
     # Resolve pharmacy by public_id early (for re-render)
     pharmacy = session.exec(
@@ -244,7 +319,7 @@ async def create_pickup(
         Pickup.created_at <= end_utc,
     )
 
-    # FIX: get scalar integer instead of Row/tuple
+    # Get scalar integer instead of Row/tuple
     current_count = session.exec(count_stmt).scalar_one()
 
     if current_count >= limit:
@@ -265,7 +340,17 @@ async def create_pickup(
             status_code=429,
         )
 
-    # Create the pickup entry first (note: internal pharmacy.id is used here)
+    # ------------------------------------------------------------------
+    # NEW: compute timing info relative to *today's* cutoff timestamp
+    #      based on weekly local config in pharmacy.
+    # ------------------------------------------------------------------
+    now_utc = datetime.now(timezone.utc)
+
+    # Snapshot of *today's* cutoff timestamp in UTC for this pickup
+    cutoff_at_utc = _get_cutoff_for_pickup(pharmacy, now_utc)
+    timing_status = _compute_timing_status(now_utc, cutoff_at_utc)
+
+    # Create the pickup entry (internal pharmacy.id is used here)
     pickup = Pickup(
         user_id=user.id,
         pharmacy_id=pharmacy.id,
@@ -273,6 +358,9 @@ async def create_pickup(
         longitude=longitude,
         comment=comment_clean,
         status="done",
+        created_at=now_utc,
+        cutoff_at_utc=cutoff_at_utc,
+        timing_status=timing_status,
     )
     session.add(pickup)
     session.flush()  # pickup.id is now available
@@ -335,7 +423,8 @@ async def create_pickup(
             "message": (
                 f"Pickup saved with {saved_count} photo(s). "
                 f"Used {current_count + 1}/{limit} pickups for today "
-                f"for pharmacy “{pharmacy.name}”."
+                f"for pharmacy “{pharmacy.name}”. "
+                f"Timing status: {timing_status}."
             ),
             "require_location": require_location,
             "photo_source_mode": settings.photo_source_mode,
