@@ -65,14 +65,20 @@
             </button>
 
             <div class="dropdown-menu">
+              <!-- Default: Driver is selected -->
               <button type="button" class="dropdown-item is-active" data-value="driver">
                 Driver
               </button>
               <button type="button" class="dropdown-item" data-value="admin">
                 Admin
               </button>
+              <!-- History-only role -->
+              <button type="button" class="dropdown-item" data-value="history">
+                History only
+              </button>
             </div>
 
+            <!-- Hidden field updated by JS chip-dropdown logic -->
             <input type="hidden" name="role" value="driver">
           </div>
         </label>
@@ -117,7 +123,15 @@
               <td>{{ u.login }}</td>
 
               <td>
-                {% if u.role == 'admin' %}Admin{% elif u.role == 'driver' %}Driver{% else %}{{ u.role }}{% endif %}
+                {% if u.role == 'admin' %}
+                  Admin
+                {% elif u.role == 'driver' %}
+                  Driver
+                {% elif u.role == 'history' %}
+                  History only
+                {% else %}
+                  {{ u.role }}
+                {% endif %}
               </td>
 
               <!-- Active pill -->
@@ -432,7 +446,7 @@
                 {% endif %}
               </td>
 
-              <!-- NEW: weekly cutoff times summary + modal trigger -->
+              <!-- Weekly cutoff times summary + modal trigger -->
               <td>
                 <div class="pharmacy-cutoff-summary">
                   <div class="pharmacy-cutoff-summary-text muted">
@@ -587,8 +601,10 @@
                     {% endfor %}
                   </div>
 
-                  <!-- assign -->
-                  {% set default_user = users[0] if users else None %}
+                  <!-- assign: only admins and drivers are shown in dropdown; history role is excluded -->
+                  {% set assignable_users = users | selectattr('role', 'ne', 'history') | list %}
+                  {% set default_user = assignable_users[0] if assignable_users else None %}
+
                   <form
                     action="/admin/pharmacies/{{ p.id }}/assign"
                     method="post"
@@ -604,7 +620,7 @@
                       </button>
 
                       <div class="dropdown-menu">
-                        {% for u in users %}
+                        {% for u in assignable_users %}
                         <button type="button" class="dropdown-item {% if loop.first %}is-active{% endif %}"
                                 data-value="{{ u.id }}">
                           {{ u.login }}

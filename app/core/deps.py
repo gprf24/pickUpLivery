@@ -6,6 +6,8 @@ Common FastAPI dependencies:
 - Current user (`get_current_user`)
 - Optional current user (`get_current_user_optional`)
 - Admin guard (`require_admin`)
+- Driver guard (`require_driver`)
+- History-access guard (`require_history_access`)
 - Global app settings (`get_app_settings`)
 - Jinja2 templates helper (`templates`)
 """
@@ -155,9 +157,42 @@ def get_current_user_optional(
 
 
 def require_admin(user: User) -> User:
-    """Guard: only admins are allowed."""
+    """
+    Guard: only admins are allowed.
+
+    NOTE: This keeps the old pattern:
+      - route depends on `get_current_user` and also on `require_admin`,
+        and FastAPI wires the `user` parameter of this function
+        from the already-resolved user object.
+    """
     if user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admin privileges required")
+    return user
+
+
+def require_driver(user: User = Depends(get_current_user)) -> User:
+    """
+    Guard: only drivers (and admins) are allowed.
+
+    Intended for pickup-creation or driver-only endpoints.
+    """
+    if user.role not in (UserRole.admin, UserRole.driver):
+        raise HTTPException(status_code=403, detail="Driver privileges required")
+    return user
+
+
+def require_history_access(user: User = Depends(get_current_user)) -> User:
+    """
+    Guard: only users that are allowed to access pickup history.
+
+    Currently allowed:
+      - Admins
+      - Drivers   (final visibility is still additionally controlled in the
+                   history endpoint via AppSettings.show_history_to_drivers)
+      - History-only users (UserRole.history)
+    """
+    if user.role not in (UserRole.admin, UserRole.driver, UserRole.history):
+        raise HTTPException(status_code=403, detail="History access required")
     return user
 
 

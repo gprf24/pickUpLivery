@@ -150,6 +150,7 @@ function closeAllChipDropdowns(except) {
     .forEach((w) => {
       if (w !== except) {
         w.classList.remove("is-open");
+        w.classList.remove("drop-up");
       }
     });
 }
@@ -218,23 +219,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!wrappers.length) return;
 
     wrappers.forEach((wrapper) => {
-      // -----------------------------------------------
-      // IMPORTANT: skip chip dropdowns on the History page.
-      //
-      // History page (history.html) defines its own custom
-      // JS logic for:
-      //  - filter chips (region / pharmacy / driver)
-      //  - export format chip (CSV / Excel)
-      //
-      // If we also attach global handlers here, those
-      // dropdowns will get double-initialized and behave
-      // incorrectly. So we ignore:
-      //  - any wrapper inside #historyFilters
-      //  - the .export-format-wrapper chip
-      // -----------------------------------------------
+      // Skip history page filter chips and export-format chip
       if (
-        wrapper.closest("#historyFilters") || // region / pharmacy / driver filters
-        wrapper.classList.contains("export-format-wrapper") // export format chip
+        wrapper.closest("#historyFilters") ||
+        wrapper.classList.contains("export-format-wrapper")
       ) {
         return;
       }
@@ -252,13 +240,53 @@ document.addEventListener("DOMContentLoaded", () => {
 
       button.addEventListener("click", (ev) => {
         ev.preventDefault();
-        const isOpen = wrapper.classList.contains("is-open");
+
+        const wasOpen = wrapper.classList.contains("is-open");
+
+        // Close all others first
         closeAllChipDropdowns(wrapper);
-        if (!isOpen) {
-          wrapper.classList.add("is-open");
-        } else {
+
+        // If this one was open — just close and exit
+        if (wasOpen) {
           wrapper.classList.remove("is-open");
+          wrapper.classList.remove("drop-up");
+          return;
         }
+
+        // --------- Measure available space and menu height ----------
+        const rect = wrapper.getBoundingClientRect();
+        const viewportHeight =
+          window.innerHeight || document.documentElement.clientHeight || 0;
+
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        // Try to measure real dropdown height (it is "display: none" by default)
+        let menuHeight = 220; // fallback
+        if (menu) {
+          const prevDisplay = menu.style.display;
+          const prevVisibility = menu.style.visibility;
+
+          // Temporarily show it off-screen (invisible) to get offsetHeight
+          menu.style.visibility = "hidden";
+          menu.style.display = "block";
+
+          menuHeight = menu.offsetHeight || menuHeight;
+
+          // Restore previous inline styles
+          menu.style.display = prevDisplay;
+          menu.style.visibility = prevVisibility;
+        }
+
+        
+        if (spaceBelow < menuHeight + 8 && spaceAbove > spaceBelow) {
+          wrapper.classList.add("drop-up");
+        } else {
+          wrapper.classList.remove("drop-up");
+        }
+
+        // Finally open
+        wrapper.classList.add("is-open");
       });
 
       menu.querySelectorAll(".dropdown-item").forEach((item) => {
@@ -414,8 +442,10 @@ document.addEventListener("DOMContentLoaded", () => {
         u.role === "admin"
           ? "Admin"
           : u.role === "driver"
-          ? "Driver"
-          : u.role;
+            ? "Driver"
+            : u.role === "history"
+              ? "History only"
+              : u.role;
 
       const gpsMode = u.gps_mode || "inherit";
 
@@ -435,11 +465,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${roleLabel}</td>
 
         <td>
-          ${
-            u.is_active
-              ? '<span class="status-pill status-ok">Yes</span>'
-              : '<span class="status-pill">No</span>'
-          }
+          ${u.is_active
+          ? '<span class="status-pill status-ok">Yes</span>'
+          : '<span class="status-pill">No</span>'
+        }
         </td>
 
         <td>
@@ -453,36 +482,32 @@ document.addEventListener("DOMContentLoaded", () => {
               <div class="chip-dropdown-wrapper gps-mode-wrapper">
                 <button type="button" class="chip chip-dropdown chip-gps">
                   <span class="chip-main-text">
-                    ${
-                      gpsMode === "inherit"
-                        ? "Inherit global"
-                        : gpsMode === "require"
-                        ? "Require GPS"
-                        : "GPS not required"
-                    }
+                    ${gpsMode === "inherit"
+          ? "Inherit global"
+          : gpsMode === "require"
+            ? "Require GPS"
+            : "GPS not required"
+        }
                   </span>
                   <span class="chip-caret"></span>
                 </button>
 
                 <div class="dropdown-menu">
                   <button type="button"
-                          class="dropdown-item ${
-                            gpsMode === "inherit" ? "is-active" : ""
-                          }"
+                          class="dropdown-item ${gpsMode === "inherit" ? "is-active" : ""
+        }"
                           data-value="inherit">
                     Inherit global
                   </button>
                   <button type="button"
-                          class="dropdown-item ${
-                            gpsMode === "require" ? "is-active" : ""
-                          }"
+                          class="dropdown-item ${gpsMode === "require" ? "is-active" : ""
+        }"
                           data-value="require">
                     Require GPS
                   </button>
                   <button type="button"
-                          class="dropdown-item ${
-                            gpsMode === "no" ? "is-active" : ""
-                          }"
+                          class="dropdown-item ${gpsMode === "no" ? "is-active" : ""
+        }"
                           data-value="no">
                     GPS not required
                   </button>
@@ -538,41 +563,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
       tbody.appendChild(row);
 
-      // Добавляем нового юзера в dropdown'ы "Assign user" во всех аптеках
-      const assignWrappers = document.querySelectorAll(".assign-user-wrapper");
-      assignWrappers.forEach((wrapper) => {
-        const menu = wrapper.querySelector(".dropdown-menu");
-        const mainText = wrapper.querySelector(".chip-main-text");
-        const hiddenInput = wrapper.querySelector('input[name="user_id"]');
-        if (!menu) return;
+      // Add new user to "Assign user" dropdowns for all pharmacies,
+      // but only if role is NOT "history".
+      // Admins and drivers can be assigned; history users are excluded.
+      if (u.role !== "history") {
+        const assignWrappers = document.querySelectorAll(".assign-user-wrapper");
+        assignWrappers.forEach((wrapper) => {
+          const menu = wrapper.querySelector(".dropdown-menu");
+          const mainText = wrapper.querySelector(".chip-main-text");
+          const hiddenInput = wrapper.querySelector('input[name="user_id"]');
+          if (!menu) return;
 
-        // уже есть такой id?
-        const exists = menu.querySelector(
-          `.dropdown-item[data-value="${u.id}"]`
-        );
-        if (exists) return;
+          // Check if this user is already in this menu
+          const exists = menu.querySelector(
+            `.dropdown-item[data-value="${u.id}"]`
+          );
+          if (exists) return;
 
-        const itemsBefore = menu.querySelectorAll(".dropdown-item").length;
+          const itemsBefore = menu.querySelectorAll(".dropdown-item").length;
 
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
-          "dropdown-item" + (itemsBefore === 0 ? " is-active" : "");
-        btn.dataset.value = u.id;
-        btn.textContent = u.login;
-        menu.appendChild(btn);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className =
+            "dropdown-item" + (itemsBefore === 0 ? " is-active" : "");
+          btn.dataset.value = u.id;
+          btn.textContent = u.login;
+          menu.appendChild(btn);
 
-        if (itemsBefore === 0) {
-          if (mainText) mainText.textContent = u.login;
-          if (hiddenInput) hiddenInput.value = u.id;
-        }
-      });
+          // If this was the first user in the menu, make them default selection
+          if (itemsBefore === 0) {
+            if (mainText) mainText.textContent = u.login;
+            if (hiddenInput) hiddenInput.value = u.id;
+          }
+        });
+      }
 
       // Re-initialize dropdowns (new row + new menu items)
       initChipDropdowns();
 
       form.reset();
-      showAdminAlert(`User "${u.login}" created `, "success");
+      showAdminAlert(`User "${u.login}" created`, "success");
       return;
     }
 
@@ -599,11 +629,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${r.id}</td>
         <td>${r.name}</td>
         <td>
-          ${
-            r.is_active
-              ? '<span class="status-pill status-ok">Yes</span>'
-              : '<span class="status-pill">No</span>'
-          }
+          ${r.is_active
+          ? '<span class="status-pill status-ok">Yes</span>'
+          : '<span class="status-pill">No</span>'
+        }
         </td>
         <td>
           <div class="form-actions form-actions-row">
@@ -635,7 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       tbody.appendChild(row);
       form.reset();
-      showAdminAlert(`Region "${r.name}" created `, "success");
+      showAdminAlert(`Region "${r.name}" created`, "success");
       return;
     }
 
@@ -647,9 +676,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const ph = data.pharmacy;
-      showAdminAlert(`Pharmacy "${ph.name}" created `, "success");
+      showAdminAlert(`Pharmacy "${ph.name}" created`, "success");
 
-      // сложная строка в таблице — проще перезагрузить страницу
+      // Row with all columns is complex; easiest is to reload the page
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -676,7 +705,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const loginCell =
           row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
         const msg = isActive
-          ? `User "${loginCell}" activated `
+          ? `User "${loginCell}" activated`
           : `User "${loginCell}" deactivated`;
         showAdminAlert(msg, "success");
       }
@@ -698,7 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const nameCell =
           row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
         const msg = isActive
-          ? `Region "${nameCell}" activated `
+          ? `Region "${nameCell}" activated`
           : `Region "${nameCell}" deactivated`;
         showAdminAlert(msg, "success");
       }
@@ -720,7 +749,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const nameCell =
           row.cells && row.cells[1] ? row.cells[1].textContent.trim() : "";
         const msg = isActive
-          ? `Pharmacy "${nameCell}" activated `
+          ? `Pharmacy "${nameCell}" activated`
           : `Pharmacy "${nameCell}" deactivated`;
         showAdminAlert(msg, "success");
       }
@@ -793,7 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       chipsContainer.appendChild(chipForm);
 
-      showAdminAlert(`User "${userName}" assigned `, "success");
+      showAdminAlert(`User "${userName}" assigned`, "success");
       return;
     }
 
@@ -820,7 +849,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // -----------------------------
     // 3) Delete user / region / pharmacy
     // -----------------------------
-
     if (
       actionType === "user-delete" ||
       actionType === "region-delete" ||
@@ -828,13 +856,78 @@ document.addEventListener("DOMContentLoaded", () => {
     ) {
       const row = form.closest("tr");
       let label = "";
+      let deletedUserId = null;
+
       if (row) {
+        // Column[1] usually holds login / region name / pharmacy name
         if (row.cells && row.cells[1]) {
           label = row.cells[1].textContent.trim();
         }
+
+        // For users we also try to read the user id from data-attribute or first cell
+        if (actionType === "user-delete") {
+          // Prefer data-user-id set when creating user via JS
+          deletedUserId = row.dataset.userId || null;
+
+          // Fallback: take first cell text (ID column)
+          if (!deletedUserId && row.cells && row.cells[0]) {
+            deletedUserId = row.cells[0].textContent.trim();
+          }
+        }
+
         if (row.parentElement) {
           row.parentElement.removeChild(row);
         }
+      }
+
+      // Extra logic ONLY for user-delete:
+      // remove this user from all "Assign user" dropdown menus
+      if (actionType === "user-delete" && deletedUserId) {
+        document.querySelectorAll(".assign-user-wrapper").forEach((wrapper) => {
+          const menu = wrapper.querySelector(".dropdown-menu");
+          if (!menu) return;
+
+          const item = menu.querySelector(
+            `.dropdown-item[data-value="${deletedUserId}"]`
+          );
+          if (!item) return;
+
+          const wasActive = item.classList.contains("is-active");
+          const mainText = wrapper.querySelector(".chip-main-text");
+          const hiddenInput = wrapper.querySelector('input[name="user_id"]');
+
+          // Remove the deleted user option from the menu
+          item.remove();
+
+          // If the removed option was currently selected,
+          // pick a new default (first item) or clear the selection
+          if (wasActive) {
+            const remainingItems = menu.querySelectorAll(".dropdown-item");
+
+            if (remainingItems.length > 0) {
+              const first = remainingItems[0];
+
+              remainingItems.forEach((btn, idx) => {
+                btn.classList.toggle("is-active", idx === 0);
+              });
+
+              if (mainText) {
+                mainText.textContent = first.textContent.trim();
+              }
+              if (hiddenInput) {
+                hiddenInput.value = first.dataset.value || "";
+              }
+            } else {
+              // No users left in menu → clear label and hidden value
+              if (mainText) {
+                mainText.textContent = "Select user";
+              }
+              if (hiddenInput) {
+                hiddenInput.value = "";
+              }
+            }
+          }
+        });
       }
 
       let msg = "Item deleted.";
@@ -850,19 +943,20 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+
     // -----------------------------
     // 4) Other: GPS / password / cutoffs
     // -----------------------------
 
     if (actionType === "user-gps-update") {
-      showAdminAlert("GPS setting updated ", "success");
+      showAdminAlert("GPS setting updated", "success");
       return;
     }
 
     if (actionType === "user-password-change") {
       const pwdInput = form.querySelector('input[name="new_password"]');
       if (pwdInput) pwdInput.value = "";
-      showAdminAlert("Password updated ", "success");
+      showAdminAlert("Password updated", "success");
       return;
     }
 
@@ -943,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      showAdminAlert("Cutoff time updated ", "success");
+      showAdminAlert("Cutoff time updated", "success");
       return;
     }
 
@@ -978,7 +1072,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       document.body.classList.remove("modal-open");
 
-      showAdminAlert("Weekly cutoff times updated ", "success");
+      showAdminAlert("Weekly cutoff times updated", "success");
       return;
     }
   }
@@ -1076,7 +1170,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (submitBtn) submitBtn.textContent = "Saved ";
+      if (submitBtn) submitBtn.textContent = "Saved";
 
       setTimeout(() => {
         if (submitBtn && originalBtnText) {
@@ -1156,20 +1250,19 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-
 // Optional: prevent reload on active nav item (kept commented)
 // function preventReloadOnActive(selector) {
 //   document.querySelectorAll(selector).forEach((link) => {
- //     link.addEventListener("click", (ev) => {
- //       const href = link.getAttribute("href");
- //       if (!href) return;
- //
- //       const currentPath = window.location.pathname || "/";
- //       if (href === currentPath) {
- //         ev.preventDefault();
- //       }
- //     });
- //   });
+//     link.addEventListener("click", (ev) => {
+//       const href = link.getAttribute("href");
+//       if (!href) return;
+//
+//       const currentPath = window.location.pathname || "/";
+//       if (href === currentPath) {
+//         ev.preventDefault();
+//       }
+//     });
+//   });
 // }
 //
 // preventReloadOnActive(".sidebar-nav .sidebar-link");

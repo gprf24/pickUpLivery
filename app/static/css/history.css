@@ -216,15 +216,14 @@
   background: var(--bg-elev);
   box-shadow: var(--shadow);
   display: none;
-  z-index: 35;
+  z-index: 40;
+
+  /* prevent page from stretching; inner scroll instead */
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-/* Show dropdown when wrapper has .is-open */
-.chip-dropdown-wrapper.is-open .dropdown-menu {
-  display: block;
-}
-
-/* Button-like entries inside dropdown */
 .dropdown-item {
   width: 100%;
   padding: 5px 8px;
@@ -235,6 +234,18 @@
   font-size: 13px;
   cursor: pointer;
   color: var(--text);
+  white-space: nowrap;
+}
+
+/* Show dropdown when wrapper has .is-open */
+.chip-dropdown-wrapper.is-open .dropdown-menu {
+  display: block;
+}
+
+/* when wrapper has .drop-up — open menu ABOVE the chip */
+.chip-dropdown-wrapper.drop-up .dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .dropdown-item:hover {
@@ -337,26 +348,6 @@
   white-space: nowrap;
 }
 
-/* Responsive behavior: stack cards on small screens */
-@media (max-width: 960px) {
-  .filter-export-row {
-    flex-direction: column;
-  }
-
-  .export-card {
-    order: 2;
-  }
-
-  .filter-bar {
-    order: 1;
-  }
-
-  .export-form {
-    flex-wrap: wrap;
-    align-items: center;
-  }
-}
-
 /* ========= HISTORY GROUPS & ROWS ========= */
 
 /* Main card that wraps all day groups */
@@ -427,10 +418,11 @@ html[data-theme="dark"] .history-row {
   display: none;
 }
 
-/* Main row grid: time, driver, pharmacy, photos, status, arrow */
+/* Desktop main row grid:
+   time | driver | region | pharmacy | photos | status | arrow */
 .history-row-main {
   display: grid;
-  grid-template-columns: 130px 1.2fr 1.4fr 90px 80px 20px;
+  grid-template-columns: 130px 1.1fr 1.0fr 1.4fr 80px 90px 20px;
   align-items: center;
   padding: 6px 10px;
   column-gap: 12px;
@@ -473,7 +465,7 @@ html[data-theme="dark"] .history-row {
   color: #15803d;
 }
 
-/* You can add a red style for "Late" if needed */
+/* Red pill for "Late" */
 .status-late {
   background: rgba(220, 38, 38, 0.12);
   border-color: rgba(220, 38, 38, 0.8);
@@ -494,7 +486,7 @@ html[data-theme="dark"] .history-row-details {
 /* Detail layout: Photos | Location | Metadata */
 .history-detail-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
 }
 
@@ -506,13 +498,7 @@ html[data-theme="dark"] .history-row-details {
 
 /* ========= COMPACT METADATA LAYOUT (inside details) ========= */
 
-/*
-  By default, metadata was a long single column.
-  Now we use a two-column grid for the pairs (Status, Timing, Cutoff, Created at, ID, Comment)
-  so the block becomes more compact and closer to the look on your screenshot.
-*/
-
-/* Overall grid for metadata entries: 2 columns on desktop */
+/* Base metadata layout: 2 columns */
 .meta-list {
   margin: 0;
   display: grid;
@@ -522,7 +508,7 @@ html[data-theme="dark"] .history-row-details {
   font-size: 12px;
 }
 
-/* Each pair "label → value" forms a small 2-column grid */
+/* Each pair "label → value" is a small 2-column grid */
 .meta-list > div {
   display: grid;
   grid-template-columns: 90px minmax(0, 1fr);
@@ -545,6 +531,7 @@ html[data-theme="dark"] .history-row-details {
   margin: 0;
   font-size: 12px;
   color: var(--text);
+  word-break: break-word; /* avoid touching neighbor column */
 }
 
 /* Keep "muted" span muted even inside dd */
@@ -575,32 +562,6 @@ html[data-theme="dark"] .history-row-details {
   width: 100%;
   height: 70px;
   object-fit: cover;
-}
-
-/* ========= HISTORY RESPONSIVE ========= */
-
-@media (max-width: 960px) {
-  .filter-chips-layout {
-    gap: 6px;
-  }
-
-  .chip-main-text {
-    max-width: 120px;
-  }
-
-  /* On smaller screens hide some columns to keep row compact */
-  .history-row-main {
-    grid-template-columns: 120px 1.4fr 90px 20px;
-  }
-
-  .history-col.driver,
-  .history-col.photos {
-    display: none;
-  }
-
-  .history-detail-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ========= PHOTO LIGHTBOX ========= */
@@ -678,22 +639,170 @@ html[data-theme="dark"] .history-row-details {
 body.modal-open {
   overflow: hidden;
 }
-/* === Fine-tuning metadata layout to avoid collisions === */
+/* ========= LOCATION MAP INSIDE HISTORY DETAILS ========= */
 
-/* Make the two big metadata columns wider apart */
-.meta-list {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr);
-  column-gap: 32px; /* more space between left and right metadata columns */
+.location-coords {
+  font-size: 12px;
+  margin-bottom: 6px;
+  font-feature-settings: "tnum" 1;
 }
 
-/* Inside each pair "LABEL → value" give label more width and more gap */
-.meta-list > div {
-  grid-template-columns: 110px minmax(0, 1fr); /* was 90px */
-  column-gap: 10px;
+.location-map {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elev);
+  margin-bottom: 6px;
+}
+.location-map {
+  width: 100%;
+  height: 220px;   
+  border-radius: 12px;
+  overflow: hidden;
+}
+.location-map iframe {
+  display: block;
+  width: 100%;
+  height: 180px;
+  border: 0;
+  pointer-events: auto; /* ensure map can receive clicks */
 }
 
-/* Allow long values (dates, comments) to wrap instead of visually
-   touching the next column */
-.meta-list dd {
-  word-break: break-word;
+/* Small text under the map */
+.location-link {
+  margin: 0;
+  font-size: 12px;
 }
+.custom-marker {
+  width: 16px;
+  height: 16px;
+  background: #f39b4f;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 4px rgba(0,0,0,0.4);
+}
+
+/* ========= DESKTOP-ONLY FINE TUNING FOR METADATA ========= */
+@media (min-width: 1669px) {
+  /* Make the two big metadata columns wider apart */
+  .meta-list {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr);
+    column-gap: 32px;
+  }
+
+  /* Inside each pair "LABEL → value" give label more width and more gap */
+  .meta-list > div {
+    grid-template-columns: 110px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+}
+
+/* ========= RESPONSIVE (<= 960px) ========= */
+
+@media (max-width: 1668px) {
+  /* Stack filter + export cards */
+  .filter-export-row {
+    flex-direction: column;
+  }
+
+  .export-card {
+    order: 2;
+  }
+
+  .filter-bar {
+    order: 1;
+  }
+
+  .export-form {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-chips-layout {
+    gap: 6px;
+  }
+
+  .chip-main-text {
+    max-width: 120px;
+  }
+
+  /* Mobile layout for history rows:
+     row1: time | status
+     row2: pharmacy (full width)
+     row3: driver  (full width, if present)
+     row4: region  (full width)
+     row5: photos | arrow
+  */
+  .history-row-main {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    grid-auto-rows: auto;
+    row-gap: 4px;
+    column-gap: 8px;
+    align-items: flex-start;
+  }
+
+  .history-col.time {
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+
+  .history-col.status {
+    grid-column: 2 / 3;
+    grid-row: 1;
+    justify-self: flex-end;
+  }
+
+  .history-col.pharmacy {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+
+  .history-col.driver {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .history-col.region {
+    grid-column: 1 / 3;
+    grid-row: 4;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .history-col.photos {
+    grid-column: 1 / 2;
+    grid-row: 5;
+    font-size: 11px;
+  }
+
+  .history-col.arrow {
+    grid-column: 2 / 3;
+    grid-row: 5;
+    justify-self: flex-end;
+  }
+
+  /* Details column collapses into a single column */
+  .history-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Metadata: single column, labels above values for readability */
+  .meta-list {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+    column-gap: 12px;
+  }
+
+  .meta-list > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .meta-list dt {
+    white-space: normal;
+    margin-bottom: 1px;
+  }
+}
+

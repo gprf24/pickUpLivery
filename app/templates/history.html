@@ -8,7 +8,7 @@
   <p class="lead">Filter by date, region, pharmacy or driver. The list updates automatically.</p>
 </section>
 
-{% if user.role == "admin" %}
+{% if user.role == "admin" or user.role == "history" %}
   <!-- ===================== FILTER + EXPORT ROW ===================== -->
   <section class="filter-export-row">
 
@@ -290,7 +290,7 @@
   <section class="card history-card">
     <div class="h-legend muted">Click a row to see photos, GPS, comment & metadata.</div>
 
-    {# groups: dict[day_str] -> list of (pickup, pharmacy, user) #}
+    {# groups: dict[day_str] -> list of (pickup, pharmacy, region, user) #}
     {% for day, items in groups.items() %}
       {% set count = items|length %}
 
@@ -306,7 +306,7 @@
         </div>
 
         <div class="history-list">
-          {% for pickup, ph, u in items %}
+          {% for pickup, ph, r, u in items %}
             {% set pids = (photo_public_ids.get(pickup.id) or []) %}
             {% set photo_qty = pids|length %}
             {% set timing = pickup.timing_status or 'no_cutoff' %}
@@ -324,8 +324,8 @@
                     </time>
                   </span>
 
-                  <!-- Driver (admin-only) -->
-                  {% if user.role == "admin" %}
+                  <!-- Driver (admin + history roles) -->
+                  {% if user.role == "admin" or user.role == "history" %}
                     <span class="history-col driver">
                       {% if u %}
                         {{ u.full_name or u.login }}
@@ -334,6 +334,15 @@
                       {% endif %}
                     </span>
                   {% endif %}
+
+                  <!-- Region -->
+                  <span class="history-col region">
+                    {% if r %}
+                      {{ r.name }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </span>
 
                   <!-- Pharmacy -->
                   <span class="history-col pharmacy">
@@ -373,6 +382,7 @@
                     {% endif %}
                   </span>
 
+                  <!-- Right arrow chevron -->
                   <span class="history-col arrow" aria-hidden="true">›</span>
                 </div>
               </summary>
@@ -401,15 +411,29 @@
                     {% endif %}
                   </div>
 
-                  <!-- GPS -->
+                  <!-- GPS / Map -->
                   <div class="history-detail-block">
                     <h4>Location</h4>
+
                     {% if pickup.latitude and pickup.longitude %}
-                      <p>
+                      <!-- Text coordinates -->
+                      <div class="location-coords">
                         {{ "%.5f"|format(pickup.latitude) }},
-                        {{ "%.5f"|format(pickup.longitude) }} <br>
+                        {{ "%.5f"|format(pickup.longitude) }}
+                      </div>
+
+                      <!-- Interactive Leaflet map; initialized via JS using data-* -->
+                      <div class="location-map"
+                           data-lat="{{ pickup.latitude }}"
+                           data-lng="{{ pickup.longitude }}">
+                      </div>
+
+                      <!-- Link to open in full Google Maps -->
+                      <p class="location-link">
                         <a href="https://www.google.com/maps/search/?api=1&query={{ pickup.latitude }},{{ pickup.longitude }}"
-                           target="_blank" class="link">Open in Google Maps</a>
+                           target="_blank" class="link">
+                          Open in Google Maps
+                        </a>
                       </p>
                     {% else %}
                       <p class="muted">No GPS coordinates.</p>
@@ -502,8 +526,28 @@
 {% endblock %}
 
 {% block scripts %}
+{# ===================== LEAFLET ASSETS (CDNJS with correct SRI) ===================== #}
+{# CSS for Leaflet maps #}
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+  integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+/>
+
+{# JS for Leaflet maps #}
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+  integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer">
+</script>
+
 <script>
 /* ===================== UTC → Local conversion ===================== */
+/* Converts all <time class="utc-to-local"> elements from UTC to local time
+   and shows weekday + date + time. */
 (function() {
   const nodes = document.querySelectorAll("time.utc-to-local");
   for (const t of nodes) {
@@ -512,18 +556,24 @@
     const d = new Date(iso);
     if (isNaN(d.getTime())) continue;
 
-    // Show weekday + local date+time, so admin sees which weekday it was
     const opts = {
       weekday: "short",
       year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit"
     };
     t.textContent = new Intl.DateTimeFormat("en-GB", opts).format(d);
-    //  t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
+    // Alternative: use browser default locale
+    // t.textContent = new Intl.DateTimeFormat(undefined, opts).format(d);
   }
 })();
 
 /* ========================= FILTER LOGIC =========================== */
+/* Handles:
+   - date range popover + presets
+   - auto-submit on change
+   - chip dropdowns (region, pharmacy, driver)
+   - clear buttons
+*/
 (function() {
   const form = document.getElementById("historyFilters");
   if (!form) return;
@@ -552,13 +602,13 @@
   }
 
   if (dateChip && datePopover) {
-    // open/close on chip click (ignore click on inner "x")
+    // Open/close on chip click (ignore click on inner "x")
     dateChip.addEventListener("click", (ev) => {
       if (ev.target && ev.target.closest(".chip-clear-icon")) return;
       datePopover.classList.toggle("is-open");
     });
 
-    // close on outside click
+    // Close on outside click
     document.addEventListener("click", (ev) => {
       if (!datePopover.classList.contains("is-open")) return;
       if (datePopover.contains(ev.target) || dateChip.contains(ev.target)) return;
@@ -594,7 +644,7 @@
       const range = btn.dataset.range || "";
       if (quickInput) quickInput.value = range;
 
-      // clear manual dates so backend uses quick_range
+      // Clear manual dates so backend uses quick_range
       if (dateFrom) dateFrom.value = "";
       if (dateTo) dateTo.value = "";
 
@@ -619,7 +669,7 @@
     const hiddenInput = wrapper.querySelector('input[type="hidden"]');
     if (!toggle || !menu || !hiddenInput) return;
 
-    // open/close on chip click (ignore click on inner "x")
+    // Open/close on chip click (ignore click on inner "x")
     toggle.addEventListener("click", (ev) => {
       if (ev.target && ev.target.closest(".chip-clear-icon")) return;
       ev.stopPropagation();
@@ -628,7 +678,7 @@
       wrapper.classList.toggle("is-open", !isOpen);
     });
 
-    // click on item
+    // Click on item
     menu.querySelectorAll(".dropdown-item").forEach(item => {
       item.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -639,7 +689,7 @@
     });
   });
 
-  // clear via "x" in region/pharmacy/driver chip
+  // Clear via "x" in region/pharmacy/driver chip
   const clearIcons = form.querySelectorAll(".chip-dropdown-wrapper .chip-clear-icon");
   clearIcons.forEach(icon => {
     icon.addEventListener("click", (ev) => {
@@ -653,7 +703,7 @@
     });
   });
 
-  // close dropdowns on outside click
+  // Close dropdowns on outside click
   document.addEventListener("click", (ev) => {
     dropdownWrappers.forEach(w => {
       if (!w.contains(ev.target)) {
@@ -663,7 +713,75 @@
   });
 })();
 
+/* ========================= LEAFLET MAP INIT ========================= */
+/* Creates an interactive Leaflet map inside each .location-map div
+   that has data-lat and data-lng attributes. */
+(function() {
+  // If Leaflet is not loaded, do nothing (avoids runtime errors)
+  if (typeof L === "undefined") {
+    console.warn("Leaflet is not available; skipping map initialization.");
+    return;
+  }
+
+  const mapBlocks = document.querySelectorAll(".location-map[data-lat][data-lng]");
+  mapBlocks.forEach((el) => {
+    const lat = parseFloat(el.getAttribute("data-lat") || "");
+    const lng = parseFloat(el.getAttribute("data-lng") || "");
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    // Create map instance
+    const map = L.map(el, {
+      center: [lat, lng],
+      zoom: 17,
+      scrollWheelZoom: false, // default: disabled to avoid accidental page scroll-zoom
+      zoomControl: true
+    });
+
+    // Modern, clean basemap (CartoDB Voyager)
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors, ' +
+          '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: "abcd",
+        maxZoom: 19
+      }
+    ).addTo(map);
+
+    // Custom simple marker
+    const markerIcon = L.divIcon({
+      className: "custom-marker",
+      iconSize: [20, 20],
+      iconAnchor: [8, 8]
+    });
+    L.marker([lat, lng], { icon: markerIcon }).addTo(map);
+
+    // --- Smart scroll behaviour: enable wheel only while cursor is on the map ---
+
+    // Make sure scroll wheel is disabled by default
+    map.scrollWheelZoom.disable();
+
+    // Enable scroll zoom when mouse moves over the map
+    map.on("mouseover", () => {
+      map.scrollWheelZoom.enable();
+    });
+
+    // Disable scroll zoom when mouse leaves the map area
+    map.on("mouseout", () => {
+      map.scrollWheelZoom.disable();
+    });
+
+    // Optional: also enable wheel zoom when user clicks the map
+    map.on("click", () => {
+      map.scrollWheelZoom.enable();
+    });
+  });
+})();
+
+
 /* ========================= PHOTO LIGHTBOX / CAROUSEL ========================= */
+/* Simple lightbox overlay used to view multiple photos in a row as a carousel. */
 (function() {
   const lightbox    = document.getElementById("photoLightbox");
   if (!lightbox) return;
@@ -758,6 +876,8 @@
 })();
 
 /* ========================= EXPORT FORMAT DROPDOWN ========================= */
+/* Small helper for the export format chip: toggles dropdown locally and
+   updates hidden "format" input. */
 (function() {
   const wrapper = document.querySelector(".export-format-wrapper");
   if (!wrapper) return;

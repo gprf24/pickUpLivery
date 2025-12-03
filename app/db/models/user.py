@@ -12,6 +12,7 @@ class UserRole(str, Enum):
 
     admin = "admin"
     driver = "driver"
+    history = "history"
 
 
 class User(SQLModel, table=True):

@@ -3,35 +3,7 @@ from __future__ import annotations
 """
 Minimal migrations module.
 
-This module contains small, idempotent migrations that are safe to run on
-every application startup.
-
-Current responsibilities:
-- Ensure new columns exist on already-created tables:
-  - pickups.comment                      (TEXT, nullable)
-  - app_settings.show_history_to_drivers (BOOLEAN NOT NULL DEFAULT TRUE)
-  - pharmacies.cutoff_*_local            (TIME, nullable) – weekly local cutoffs
-  - pickups.cutoff_at_utc                (TIMESTAMP, nullable)
-  - pickups.timing_status                (VARCHAR(20), nullable)
-
-- Clean up legacy columns that are no longer used by the models:
-  - pharmacies.latest_pickup_time_utc
-  - pickups.cutoff_time_utc
-  - pickups.image_bytes
-  - pickups.image_content_type
-  - pickups.image_filename
-
-- Backfill existing rows with sensible defaults:
-  - pharmacies: fake weekly cutoff schedule
-      Mon–Fri = 15:50 local
-      Sat     = 12:00 local
-      Sun     = NULL (no cutoff)
-  - pickups: compute cutoff_at_utc + timing_status for rows where
-    cutoff_at_utc IS NULL, based on the current pharmacy schedule.
-
-Notes:
-- SQL is written for PostgreSQL.
-- All steps are idempotent and safe to run multiple times.
+...
 """
 
 from sqlalchemy import text
@@ -41,14 +13,38 @@ from sqlalchemy.engine import Engine
 def run_minimal_migrations(engine: Engine) -> None:
     """
     Run small idempotent migrations for already-created tables.
-
-    Safe to call multiple times. If a column already exists, the statements
-    will either be no-ops (ADD COLUMN IF NOT EXISTS) or we simply re-apply
-    DEFAULT/NOT NULL constraints. Legacy columns are dropped only if they
-    actually exist (checked via information_schema), so they will not
-    cause errors if they never existed in this DB.
     """
     with engine.connect() as conn:
+        # ---------------------------------------------------------------
+        # 0a) Ensure enum type userrole has value 'history'
+        #
+        # This is needed because the Python enum UserRole now has:
+        #   admin, driver, history
+        # but the PostgreSQL enum `userrole` may still only have
+        #   'admin', 'driver'.
+        #
+        # The block is idempotent: if 'history' already exists,
+        # ALTER TYPE is not executed.
+        # ---------------------------------------------------------------
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_type t
+                        JOIN pg_enum e ON t.oid = e.enumtypid
+                        WHERE t.typname = 'userrole'
+                          AND e.enumlabel = 'history'
+                    ) THEN
+                        ALTER TYPE userrole ADD VALUE 'history';
+                    END IF;
+                END$$;
+                """
+            )
+        )
+
         # ---------------------------------------------------------------
         # 0) Drop obsolete legacy columns IF they exist
         #    (defensive, before adding or backfilling new structure)
@@ -193,10 +189,6 @@ def run_minimal_migrations(engine: Engine) -> None:
 
         # ---------------------------------------------------------------
         # 3a) Backfill fake weekly schedule for existing pharmacies
-        #      (Mon–Fri = 15:50, Sat = 12:00, Sun = NULL)
-        #
-        # NOTE: we use COALESCE so that if some values are already set
-        # (e.g. manually configured later), they are NOT overwritten.
         # ---------------------------------------------------------------
         conn.execute(
             text(
@@ -238,22 +230,6 @@ def run_minimal_migrations(engine: Engine) -> None:
 
         # ---------------------------------------------------------------
         # 4a) Backfill cutoff_at_utc + timing_status for existing pickups
-        #
-        # Logic (PostgreSQL-specific):
-        # - Convert created_at to local time (Europe/Berlin).
-        # - Take local DATE.
-        # - Choose cutoff_*_local for that weekday:
-        #     dow 1..5 => Mon..Fri
-        #     dow 6    => Sat
-        #     dow 0    => Sun
-        # - If cutoff time is NULL => no_cutoff.
-        # - Else build local cutoff DATETIME = date + cutoff_time_local.
-        # - Convert that local timestamp back to UTC with AT TIME ZONE.
-        # - Compare created_at vs cutoff_at_utc:
-        #     <= => on_time
-        #     >  => late
-        #
-        # We only touch rows where cutoff_at_utc IS NULL to keep idempotency.
         # ---------------------------------------------------------------
         conn.execute(
             text(
@@ -271,21 +247,16 @@ def run_minimal_migrations(engine: Engine) -> None:
                   SELECT
                     p.id AS pickup_id,
                     CASE
-                      -- If selected cutoff time for that day is NULL -> no cutoff
                       WHEN cutoff_time_local IS NULL THEN NULL
                       ELSE
                         (
-                          -- Build local timestamp: local_date + local_cutoff_time,
-                          -- then convert it back to UTC.
-                          (
-                            local_date + cutoff_time_local
-                          ) AT TIME ZONE 'Europe/Berlin'
+                          (local_date + cutoff_time_local)
+                          AT TIME ZONE 'Europe/Berlin'
                         )
                     END AS cutoff_at_utc
                   FROM (
                     SELECT
                       p.id,
-                      -- local date in Europe/Berlin
                       (p.created_at AT TIME ZONE 'Europe/Berlin')::date AS local_date,
                       EXTRACT(
                         DOW FROM (p.created_at AT TIME ZONE 'Europe/Berlin')
@@ -326,9 +297,7 @@ def run_minimal_migrations(engine: Engine) -> None:
         )
 
         # ---------------------------------------------------------------
-        # 5) (Extra safety) Drop legacy columns again via IF EXISTS
-        #    in case they somehow reappeared or were created later.
-        #    This is mostly defensive and should normally be a no-op.
+        # 5) Extra safety: drop legacy columns again via IF EXISTS
         # ---------------------------------------------------------------
         conn.execute(
             text(

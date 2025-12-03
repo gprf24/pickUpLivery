@@ -31,6 +31,8 @@ from app.core.deps import (
     get_current_user_optional,
     get_session,
     require_admin,
+    require_driver,
+    require_history_access,
     templates,
 )
 
@@ -140,15 +142,27 @@ def root_redirect(
     session: Session = Depends(get_session),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
+    """
+    Role-based home redirect from "/":
+
+    - Guests        → /login
+    - History-only  → /history
+    - Admin         → /history (default admin home)
+    - Driver/other  → /tasks
+    """
     # Not logged in → go to login
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
-    # Admin → history
-    if user.role == "admin":
+    # History-only accounts: always land on history page
+    if user.role == UserRole.history:
         return RedirectResponse("/history", status_code=303)
 
-    # Driver → tasks
+    # Admin → history (current convention)
+    if user.role == UserRole.admin:
+        return RedirectResponse("/history", status_code=303)
+
+    # Drivers (and any other roles) → tasks
     return RedirectResponse("/tasks", status_code=303)
 
 
@@ -157,7 +171,8 @@ def root_redirect(
 def tasks_page(
     request: Request,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
+    # Only drivers and admins are allowed here; history-role is forbidden.
+    user: User = Depends(require_driver),
     settings: AppSettings = Depends(get_app_settings),
 ):
     """
@@ -165,6 +180,8 @@ def tasks_page(
 
     Both drivers and admins see only pharmacies they are explicitly assigned to
     via UserPharmacyLink.
+
+    History-only accounts are blocked by require_driver and will receive 403.
     """
     # Join UserPharmacyLink → Pharmacy and filter by current user
     stmt = (
@@ -216,7 +233,7 @@ def success_page(
 def history_page(
     request: Request,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_history_access),
     settings: AppSettings = Depends(get_app_settings),
     # Accept raw strings so empty strings won't cause 422
     region_id: Optional[str] = Query(None),
@@ -224,24 +241,32 @@ def history_page(
     driver_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    quick_range: Optional[str] = Query(None),  # <--- quick presets
+    quick_range: Optional[str] = Query(
+        None
+    ),  # <--- quick presets (today, this_week, etc.)
 ):
     """
     Render pickup history.
 
+    Key behaviour:
     - Tolerant filters (all query params are optional and parsed manually).
-    - Rows grouped by day for visual separators.
-    - Photos: we now use per-pickup lists of photo public_ids (secure URLs)
+    - Rows grouped by day (DE timezone) for visual separators.
+    - Photos: we use per-pickup lists of photo public_ids (secure URLs)
       instead of predictable /pickup/{pickup_id}/photos/{idx} paths.
     - Access control:
         * Admins see all pickups (with filters).
+        * Users with role `history` see all pickups (read-only history view).
         * Drivers see history only if settings.show_history_to_drivers is True;
-          otherwise a 403-style page is shown.
-    - New: quick_range presets (today / yesterday / this_week / last_week / tomorrow).
-      If quick_range is set and no manual dates are given, it will define date_from/date_to.
+          otherwise a 403-style page is shown and they cannot access this view.
+    - Quick-range presets (today / yesterday / this_week / last_week / tomorrow):
+      if quick_range is set and no manual dates are provided, it defines date_from/date_to.
+    - Each row now has: (Pickup, Pharmacy, Region, User).
     """
 
-    # If history is disabled for drivers → render a dedicated 403 page
+    # ------------------------------------------------------------------
+    # 0) Access restriction for drivers if history is globally disabled
+    # ------------------------------------------------------------------
+    # Admin + history-only users ignore this flag.
     if user.role == UserRole.driver and not settings.show_history_to_drivers:
         return templates.TemplateResponse(
             "history_forbidden.html",
@@ -253,36 +278,43 @@ def history_page(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    # 1) Parse filters from raw query strings
+    # ------------------------------------------------------------------
+    # 1) Parse filters from raw query strings (they can be empty strings)
+    # ------------------------------------------------------------------
     rid = _parse_int(region_id)
     pid = _parse_int(pharmacy_id)
     did = _parse_int(driver_id)
     dfrom = _parse_date(date_from)
     dto = _parse_date(date_to)
 
-    # Apply quick_range if dates not manually set
+    # Apply quick_range only if user did not manually specify dates
     if quick_range and not (dfrom or dto):
         q_from, q_to = _compute_quick_range(quick_range)
         dfrom = dfrom or q_from
         dto = dto or q_to
 
     is_admin = user.role == UserRole.admin
+    # History-only users can see all pickups just like admins (read-only)
+    can_see_all = user.role in {UserRole.admin, UserRole.history}
 
-    # 2) Additional warnings for inconsistent filters (optional)
+    # ------------------------------------------------------------------
+    # 2) Additional warnings for inconsistent filter combinations (optional)
+    # ------------------------------------------------------------------
     warnings: List[str] = []
 
-    # Validate region / pharmacy / driver combinations
+    # Fetch selected entities (if any) to check relationships
     selected_region = session.get(Region, rid) if rid else None
     selected_pharmacy = session.get(Pharmacy, pid) if pid else None
     selected_driver = session.get(User, did) if did else None
 
+    # Region + pharmacy mismatch
     if selected_pharmacy and selected_region:
         if selected_pharmacy.region_id != selected_region.id:
             warnings.append(
                 f"Pharmacy “{selected_pharmacy.name}” does not belong to region “{selected_region.name}”."
             )
 
-    # Driver + pharmacy inconsistency
+    # Driver + pharmacy mismatch (driver not linked to this pharmacy)
     if selected_driver and selected_pharmacy:
         link_exists = (
             session.exec(
@@ -298,7 +330,7 @@ def history_page(
                 f"Driver “{_user_label(selected_driver)}” is not assigned to pharmacy “{selected_pharmacy.name}”."
             )
 
-    # Driver + region but no specific pharmacy: check if driver has any pharmacy in this region
+    # Driver + region mismatch (driver has no pharmacies in this region)
     if selected_driver and selected_region and not selected_pharmacy:
         driver_pharmacy_ids = session.exec(
             sm_select(UserPharmacyLink.pharmacy_id).where(
@@ -321,7 +353,11 @@ def history_page(
                 f"Driver “{_user_label(selected_driver)}” has no pharmacies in region “{selected_region.name}”."
             )
 
+    # ------------------------------------------------------------------
     # 3) Base query: Pickup → Pharmacy → Region → User
+    # ------------------------------------------------------------------
+    # We use outer joins so that even if some relations are missing, the
+    # pickup row will still appear, with None for missing entities.
     join_expr = outerjoin(
         outerjoin(
             outerjoin(Pickup, Pharmacy, Pharmacy.id == Pickup.pharmacy_id),
@@ -338,38 +374,51 @@ def history_page(
         .order_by(Pickup.created_at.desc())
     )
 
+    # ------------------------------------------------------------------
     # 4) Apply filters to the query
+    # ------------------------------------------------------------------
     if rid:
         stmt = stmt.where(Region.id == rid)
     if pid:
         stmt = stmt.where(Pharmacy.id == pid)
-    # driver_id filter only makes sense for admins; for non-admins did is always None
-    if did and is_admin:
+
+    # Driver filter: only allowed for roles that can see all pickups
+    # (admin + history). Drivers themselves are handled below.
+    if did and can_see_all:
         stmt = stmt.where(User.id == did)
+
     if dfrom:
         stmt = stmt.where(Pickup.created_at >= _as_start_dt(dfrom))
     if dto:
         stmt = stmt.where(Pickup.created_at <= _as_end_dt(dto))
 
-    if not is_admin:
-        # Non-admins only see their own pickups (but only if history is enabled for them)
+    # Non-admin roles:
+    # - Driver: only see own pickups (if history is enabled at all).
+    # - History-only: can see all pickups (no extra restriction).
+    if user.role == UserRole.driver and not can_see_all:
         stmt = stmt.where(Pickup.user_id == user.id)
 
     raw_rows = session.exec(stmt).all()
 
-    # 5) Convert to (Pickup, Pharmacy, User) tuples and collect pickup_ids
-    rows: List[Tuple[Pickup, Optional[Pharmacy], Optional[User]]] = []
+    # ------------------------------------------------------------------
+    # 5) Convert to typed tuples and collect pickup_ids
+    #     rows: (Pickup, Pharmacy | None, Region | None, User | None)
+    # ------------------------------------------------------------------
+    rows: List[Tuple[Pickup, Optional[Pharmacy], Optional[Region], Optional[User]]] = []
     pickup_ids: List[int] = []
-    for tup in raw_rows:
-        pickup = tup[0] if len(tup) > 0 else None
-        pharmacy = tup[1] if len(tup) > 1 else None
-        user_row = tup[3] if len(tup) > 3 else None
+
+    # Because we selected (Pickup, Pharmacy, Region, User) above and used
+    # outerjoin, each row is a 4-tuple; some elements can be None.
+    for pickup, pharmacy, region_row, user_row in raw_rows:
         if pickup is None:
+            # In practice this should not happen, but we keep the guard.
             continue
-        rows.append((pickup, pharmacy, user_row))
+        rows.append((pickup, pharmacy, region_row, user_row))
         pickup_ids.append(pickup.id)
 
+    # ------------------------------------------------------------------
     # 6) Photo public_ids per pickup (for secure non-guessable URLs)
+    # ------------------------------------------------------------------
     photo_public_ids: Dict[int, List[str]] = {}
 
     if pickup_ids:
@@ -381,40 +430,54 @@ def history_page(
         for pickup_id, public_id in session.exec(photo_stmt).all():
             photo_public_ids.setdefault(pickup_id, []).append(public_id)
 
+    # ------------------------------------------------------------------
     # 7) Group by day (date portion of created_at in DE time)
-    groups: Dict[str, List[Tuple[Pickup, Optional[Pharmacy], Optional[User]]]] = {}
-    for pickup, pharmacy, user_row in rows:
-        # Convert UTC->DE for grouping purposes
+    # ------------------------------------------------------------------
+    # groups: dict[day_str] -> list[(Pickup, Pharmacy | None, Region | None, User | None)]
+    groups: Dict[
+        str,
+        List[Tuple[Pickup, Optional[Pharmacy], Optional[Region], Optional[User]]],
+    ] = {}
+
+    for pickup, pharmacy, region_row, user_row in rows:
+        # Convert UTC → DE timezone for grouping by local calendar day
         created_at_utc = pickup.created_at
         if created_at_utc.tzinfo is None:
             created_at_utc = created_at_utc.replace(tzinfo=timezone.utc)
         created_at_de = created_at_utc.astimezone(TZ_DE)
         day_key = created_at_de.date().isoformat()
-        groups.setdefault(day_key, []).append((pickup, pharmacy, user_row))
 
-    # 8) Reference lists for filters
+        groups.setdefault(day_key, []).append((pickup, pharmacy, region_row, user_row))
+
+    # ------------------------------------------------------------------
+    # 8) Reference lists for filter dropdowns
+    # ------------------------------------------------------------------
     regions = session.exec(sm_select(Region).order_by(Region.name)).all()
     pharmacies = session.exec(sm_select(Pharmacy).order_by(Pharmacy.name)).all()
     users = session.exec(sm_select(User).order_by(User.login)).all()
 
-    # 9) Prepare normalized strings for template
+    # ------------------------------------------------------------------
+    # 9) Prepare normalized strings for template (for existing filter state)
+    # ------------------------------------------------------------------
     active_filters = {
         "region_id": str(rid) if rid is not None else "",
         "pharmacy_id": str(pid) if pid is not None else "",
-        "driver_id": str(did) if (did is not None and is_admin) else "",
+        "driver_id": str(did) if (did is not None and can_see_all) else "",
         "date_from": dfrom.isoformat() if dfrom else "",
         "date_to": dto.isoformat() if dto else "",
         "quick_range": quick_range or "",
     }
 
+    # ------------------------------------------------------------------
     # 10) Render template
+    # ------------------------------------------------------------------
     return templates.TemplateResponse(
         "history.html",
         {
             "request": request,
             "user": user,
             "settings": settings,
-            "groups": groups,  # grouped rows by day
+            "groups": groups,  # grouped rows by day: dict[day_str] -> list[(Pickup, Pharmacy, Region, User)]
             "photo_public_ids": photo_public_ids,  # pickup_id -> [public_id1, public_id2, ...]
             "regions": regions,
             "pharmacies": pharmacies,
@@ -440,7 +503,11 @@ def history_export(
     format: str = Query("csv"),
 ):
     """
-    Export pickup history for admins as CSV or Excel.
+    Export pickup history as CSV or Excel.
+
+    Access:
+      - Admins
+      - History-only users (role = history)
 
     Columns:
       - region
@@ -453,7 +520,11 @@ def history_export(
       - geolocation        (lat,lon if coordinates are present)
       - comment            (optional driver comment)
     """
-    require_admin(user)
+    # Only admin + history-role can export
+    if user.role not in {UserRole.admin, UserRole.history}:
+        raise HTTPException(
+            status_code=403, detail="History export not allowed for this user."
+        )
 
     # 1) Parse filters
     rid = _parse_int(region_id)
@@ -485,7 +556,7 @@ def history_export(
         .order_by(Pickup.created_at.desc())
     )
 
-    # 3) Apply filters (admins can filter by any combination)
+    # 3) Apply filters (authorized roles can filter by any combination)
     if rid:
         stmt = stmt.where(Region.id == rid)
     if pid:

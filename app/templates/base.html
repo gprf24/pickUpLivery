@@ -37,13 +37,27 @@
     {% set is_login_page = request.url.path.startswith('/login') %}
 
     {# ============================================================ #}
-    {# Determine if History should be visible (same as before)     #}
+    {# Determine visibility of Tasks / History                    #}
     {# ============================================================ #}
     {% set show_history = false %}
+    {% set show_tasks = false %}
+
     {% if user %}
+      {# Admin: can see tasks and history #}
       {% if user.role == 'admin' %}
+        {% set show_tasks = true %}
         {% set show_history = true %}
-      {% elif settings is defined and settings.show_history_to_drivers %}
+
+      {# Driver: always see tasks; history depends on settings #}
+      {% elif user.role == 'driver' %}
+        {% set show_tasks = true %}
+        {% if settings is defined and settings.show_history_to_drivers %}
+          {% set show_history = true %}
+        {% endif %}
+
+      {# History-only role: only history, no tasks #}
+      {% elif user.role == 'history' %}
+        {% set show_tasks = false %}
         {% set show_history = true %}
       {% endif %}
     {% endif %}
@@ -59,6 +73,17 @@
         {% else %}
           {% set home_url = '/tasks' %}
         {% endif %}
+      {% elif user.role == 'driver' %}
+        {# For drivers, default home is tasks if available, otherwise history #}
+        {% if show_tasks %}
+          {% set home_url = '/tasks' %}
+        {% elif show_history %}
+          {% set home_url = '/history' %}
+        {% else %}
+          {% set home_url = '/tasks' %}
+        {% endif %}
+      {% elif user.role == 'history' %}
+        {% set home_url = '/history' %}
       {% else %}
         {% set home_url = '/tasks' %}
       {% endif %}
@@ -79,15 +104,17 @@
 
         <nav class="sidebar-nav">
 
-          <!-- Tasks -->
-          <a href="/tasks"
-            class="sidebar-link has-tooltip
-              {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}"
-            data-tooltip="Tasks">
-            <span class="sidebar-icon">{{ icon('tasks') }}</span>
-          </a>
+          {# Tasks (only for roles that are allowed to see tasks) #}
+          {% if show_tasks %}
+            <a href="/tasks"
+              class="sidebar-link has-tooltip
+                {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}"
+              data-tooltip="Tasks">
+              <span class="sidebar-icon">{{ icon('tasks') }}</span>
+            </a>
 
-          <hr class="sidebar-divider" />
+            <hr class="sidebar-divider" />
+          {% endif %}
 
           <!-- History -->
           {% if show_history %}
@@ -176,11 +203,13 @@
             </div>
 
             <div class="mobile-menu-links">
-              <a href="/tasks"
-                class="mobile-link
-                  {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}">
-                {{ icon('tasks', 'icon-inline') }} Tasks
-              </a>
+              {% if show_tasks %}
+                <a href="/tasks"
+                  class="mobile-link
+                    {% if request.url.path.startswith('/tasks') or request.url.path == '/' %}is-active{% endif %}">
+                  {{ icon('tasks', 'icon-inline') }} Tasks
+                </a>
+              {% endif %}
 
               {% if show_history %}
                 <a href="/history"
@@ -228,7 +257,7 @@
 
         <footer class="site-footer">
           <div class="container{% if is_login_page %} footer-login{% endif %}">
-                        {% if is_login_page %}
+            {% if is_login_page %}
               <button type="button"
                       class="icon-btn"
                       data-toggle-theme
@@ -237,8 +266,6 @@
               </button>
             {% endif %}
             <small>© <span id="year"></span> PickUp Livery</small>
-
-
           </div>
         </footer>
 

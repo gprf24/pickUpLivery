@@ -29,7 +29,7 @@ from app.db.models.pharmacy import Pharmacy
 from app.db.models.pickup import Pickup
 from app.db.models.pickup_photo import PickupPhoto
 from app.db.models.settings import AppSettings
-from app.db.models.user import User
+from app.db.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -51,10 +51,17 @@ def _ensure_user_can_access_pharmacy(
     Rules:
       - Admins can access all pharmacies.
       - Drivers must have a UserPharmacyLink entry for this pharmacy.
+
+    NOTE:
+      History-only users are *not* handled here on purpose.
+      For read-only access (e.g., photo viewing from history),
+      they are allowed explicitly in the corresponding route.
     """
-    if user.role == "admin":
+    # Admins: full access
+    if user.role == UserRole.admin:
         return
 
+    # All non-admins that reach here (drivers, etc.) must be linked.
     link_exists = (
         session.exec(
             select(UserPharmacyLink).where(
@@ -192,6 +199,10 @@ def pickup_form(
     Access is restricted:
       - Admin: any pharmacy.
       - Driver: only pharmacies assigned to this user.
+
+    History-only users do not normally reach this route (no Tasks UI),
+    but if they try to open it manually, _ensure_user_can_access_pharmacy
+    will still enforce driver/admin rules (no special access).
     """
     pharmacy = session.exec(
         select(Pharmacy).where(Pharmacy.public_id == pharmacy_pid)
@@ -244,7 +255,7 @@ async def create_pickup(
     - Enforces daily pickup limit via AppSettings.allowed_pickups_per_day
       per (driver, pharmacy).
     - NEW: Stores weekly-based cutoff snapshot (cutoff_at_utc) and timing_status
-      (on_time / late / no_cutoff) for each pickup.
+      (on_time / no_cutoff / late) for each pickup.
     """
     # Resolve pharmacy by public_id early (for re-render)
     pharmacy = session.exec(
@@ -447,8 +458,10 @@ def get_pickup_photo(
 
     Security layers:
       - URL is non-guessable (public_id, not sequential).
-      - We additionally enforce that the current user is allowed to access
-        the pharmacy associated with this pickup.
+      - Access rules:
+          * Admins: may view any photo.
+          * History-only users: may view any photo (read-only reporting role).
+          * Drivers: must be linked to the pharmacy via UserPharmacyLink.
     """
     photo = session.exec(
         select(PickupPhoto).where(PickupPhoto.public_id == photo_id)
@@ -465,7 +478,12 @@ def get_pickup_photo(
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found for this photo")
 
-    _ensure_user_can_access_pharmacy(session, user, pharmacy)
+    # Access control:
+    # - Admin: always allowed
+    # - History-only: always allowed (read-only reporting role)
+    # - Drivers/others: must satisfy _ensure_user_can_access_pharmacy
+    if user.role not in {UserRole.admin, UserRole.history}:
+        _ensure_user_can_access_pharmacy(session, user, pharmacy)
 
     return Response(
         content=photo.image_bytes,
